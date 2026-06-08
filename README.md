@@ -1,17 +1,36 @@
-# sovicut
+# 🎬 SoViCut
 
-A new Flutter project.
+**SoViCut** — лёгкий видеоредактор для Windows с мощным управлением аудиодорожками. Обрезайте видео, вырезайте титры, меняйте громкость и нормализуйте звук быстро без тяжёлых программ.
 
-## Getting Started
+![SoViCut preview](https://via.placeholder.com/800x400?text=Screenshot+Coming+Soon)
 
-This project is a starting point for a Flutter application.
+## ✨ Возможности
 
-A few resources to get you started if this is your first Flutter project:
+- **Drag & drop** — перетащите видео в окно или выберите через диалог
+- **Обрезка видео**:
+  - Оставить первые N секунд
+  - Вырезать последние N секунд (удаление титров TikTok/YouTube)
+- **Управление аудио** (скоро):
+  - Изменение громкости каждой дорожки (0–200% / ±dB)
+  - Нормализация звука до -23 LUFS
+  - Микширование нескольких аудиодорожек
+- **Быстрый экспорт** — с перекодированием или без (`-c:v copy`)
+- **Сохранение** в папку Загрузки
+- **Тёмная тема** интерфейса
+- **Копирование ошибок** —一键 для отладки
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## 🚀 Установка
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### Готовый .exe (без установки)
+
+1. Скачайте последний релиз из [Releases](https://github.com/igetpaid/SoViCut/releases)
+2. Распакуйте ZIP-архив
+3. Запустите `SoViCut.exe`
+
+### Или соберите из исходников
+
+```bash
+git clone https://github.com/igetpaid/SoViCut.git
+cd SoViCut
+flutter pub get
+flutter run -d windows
