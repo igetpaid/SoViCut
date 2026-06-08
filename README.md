@@ -1,7 +1,7 @@
 # 🎬 SoViCut
 
 **SoViCut** — лёгкий видеоредактор для Windows с мощным управлением аудиодорожками. Обрезайте видео, вырезайте титры, меняйте громкость и нормализуйте звук быстро без тяжёлых программ.
-![SoViCut Logo](https://raw.githubusercontent.com/igetpaid/sovicut/assets/logo.png)
+![SoViCut Logo](https://github.com/igetpaid/SoViCut/blob/main/assets/logo.png)
 
 ## ✨ Возможности
 
