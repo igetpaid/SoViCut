@@ -24,11 +24,3 @@
 1. Скачайте последний релиз из [Releases](https://github.com/igetpaid/SoViCut/releases)
 2. Распакуйте ZIP-архив
 3. Запустите `SoViCut.exe`
-
-### Или соберите из исходников
-
-```bash
-git clone https://github.com/igetpaid/SoViCut.git
-cd SoViCut
-flutter pub get
-flutter run -d windows
