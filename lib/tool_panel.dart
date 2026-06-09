@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'trim_tab.dart';
 import 'audio_tab.dart';
-import 'export_tab.dart';
+import 'export_settings_tab.dart';
+import 'clips_tab.dart';
 import 'audio_track.dart';
 import 'clip.dart';
 
@@ -21,6 +22,13 @@ class ToolPanel extends StatelessWidget {
   
   final List<Clip> clips;
   final String? videoPath;
+  final Function(int) onDeleteClip;
+  final Function(int) onRestoreClip;
+  
+  final int originalAudioBitrate;
+  final int originalSampleRate;
+  final int originalChannels;
+  final Function(ExportSettings) onExportSettingsChanged;
   
   const ToolPanel({
     super.key,
@@ -37,6 +45,12 @@ class ToolPanel extends StatelessWidget {
     required this.onMixEnabledChanged,
     required this.clips,
     required this.videoPath,
+    required this.onDeleteClip,
+    required this.onRestoreClip,
+    required this.originalAudioBitrate,
+    required this.originalSampleRate,
+    required this.originalChannels,
+    required this.onExportSettingsChanged,
   });
 
   @override
@@ -44,14 +58,15 @@ class ToolPanel extends StatelessWidget {
     return Container(
       color: Colors.grey[900],
       child: DefaultTabController(
-        length: 3,
+        length: 4,
         child: Column(
           children: [
             const TabBar(
               tabs: [
                 Tab(text: 'Обрезка'),
                 Tab(text: 'Аудио'),
-                Tab(text: 'Инфо'),
+                Tab(text: 'Фрагменты'),
+                Tab(text: 'Экспорт'),
               ],
               labelColor: Colors.orange,
               unselectedLabelColor: Colors.grey,
@@ -75,10 +90,16 @@ class ToolPanel extends StatelessWidget {
                     mixEnabled: mixEnabled,
                     onMixEnabledChanged: onMixEnabledChanged,
                   ),
-                  ExportTab(
-                    audioTracks: audioTracks,
+                  ClipsTab(
                     clips: clips,
-                    videoPath: videoPath,
+                    onDelete: onDeleteClip,
+                    onRestore: onRestoreClip,
+                  ),
+                  ExportSettingsTab(
+                    originalAudioBitrate: originalAudioBitrate,
+                    originalSampleRate: originalSampleRate,
+                    originalChannels: originalChannels,
+                    onSettingsChanged: onExportSettingsChanged,
                   ),
                 ],
               ),

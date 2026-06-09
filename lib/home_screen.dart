@@ -9,6 +9,7 @@ import 'ffmpeg_service.dart';
 import 'preview_area.dart';
 import 'timeline_widget.dart';
 import 'tool_panel.dart';
+import 'export_settings_tab.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -30,6 +31,17 @@ class _HomeScreenState extends State<HomeScreen> {
   
   bool _audioEnabled = false;
   bool _mixTracks = false;
+  
+  int _nextClipId = 1;
+  
+  int _originalAudioBitrate = 192000;
+  int _originalSampleRate = 48000;
+  int _originalChannels = 2;
+  ExportSettings _exportSettings = ExportSettings.defaults(
+    originalBitrate: 192000,
+    originalSampleRate: 48000,
+    originalChannels: 2,
+  );
 
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.video);
@@ -46,6 +58,8 @@ class _HomeScreenState extends State<HomeScreen> {
     
     final tracks = await FFmpegService.analyzeAudio(path);
     final duration = await _getVideoDuration(path);
+    final audioInfo = await _getAudioInfo(path);
+    
     final clips = [
       Clip(
         id: 0,
@@ -59,6 +73,15 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _audioTracks = tracks;
       _clips = clips;
+      _nextClipId = 1;
+      _originalAudioBitrate = audioInfo.bitrate;
+      _originalSampleRate = audioInfo.sampleRate;
+      _originalChannels = audioInfo.channels;
+      _exportSettings = ExportSettings.defaults(
+        originalBitrate: audioInfo.bitrate,
+        originalSampleRate: audioInfo.sampleRate,
+        originalChannels: audioInfo.channels,
+      );
       _isLoading = false;
     });
   }
@@ -77,23 +100,92 @@ class _HomeScreenState extends State<HomeScreen> {
     return double.parse(result.stdout.toString().trim());
   }
 
-  void _splitClip() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Разделение будет добавлено позже')),
+  Future<AudioInfo> _getAudioInfo(String path) async {
+    final result = await Process.run(
+      'ffprobe',
+      [
+        '-v', 'error',
+        '-show_entries', 'stream=codec_type,bit_rate,sample_rate,channels',
+        '-of', 'default=noprint_wrappers=1',
+        path
+      ],
+      runInShell: true,
     );
+    
+    int bitrate = 192000;
+    int sampleRate = 48000;
+    int channels = 2;
+    
+    final lines = result.stdout.toString().split('\n');
+    for (int i = 0; i < lines.length; i++) {
+      if (lines[i].contains('codec_type=audio')) {
+        if (i + 1 < lines.length && lines[i + 1].startsWith('bit_rate=')) {
+          final br = int.tryParse(lines[i + 1].split('=')[1]);
+          if (br != null && br > 0) bitrate = br;
+        }
+        if (i + 2 < lines.length && lines[i + 2].startsWith('sample_rate=')) {
+          final sr = int.tryParse(lines[i + 2].split('=')[1]);
+          if (sr != null && sr > 0) sampleRate = sr;
+        }
+        if (i + 3 < lines.length && lines[i + 3].startsWith('channels=')) {
+          final ch = int.tryParse(lines[i + 3].split('=')[1]);
+          if (ch != null && ch > 0) channels = ch;
+        }
+        break;
+      }
+    }
+    
+    return AudioInfo(bitrate: bitrate, sampleRate: sampleRate, channels: channels);
   }
 
-  void _deleteClip() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Удаление будет добавлено позже')),
+  void _splitClip(int clipIndex, double splitTimeInClip) {
+    if (clipIndex < 0 || clipIndex >= _clips.length) return;
+    final clip = _clips[clipIndex];
+    if (!clip.isVisible) return;
+    
+    final splitAbsolute = clip.startTime + splitTimeInClip;
+    
+    final newClips = List<Clip>.from(_clips);
+    final clip1 = Clip(
+      id: _nextClipId++,
+      sourcePath: clip.sourcePath,
+      startTime: clip.startTime,
+      endTime: splitAbsolute,
+      isVisible: true,
     );
+    final clip2 = Clip(
+      id: _nextClipId++,
+      sourcePath: clip.sourcePath,
+      startTime: splitAbsolute,
+      endTime: clip.endTime,
+      isVisible: true,
+    );
+    newClips.removeAt(clipIndex);
+    newClips.insert(clipIndex, clip2);
+    newClips.insert(clipIndex, clip1);
+    
+    setState(() {
+      _clips = newClips;
+    });
   }
 
-  void _restoreClip() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Восстановление будет добавлено позже')),
-    );
+  void _deleteClip(int clipIndex) {
+    if (clipIndex < 0 || clipIndex >= _clips.length) return;
+    setState(() {
+      _clips[clipIndex].isVisible = false;
+    });
   }
+
+  void _restoreClip(int clipIndex) {
+    if (clipIndex < 0 || clipIndex >= _clips.length) return;
+    setState(() {
+      _clips[clipIndex].isVisible = true;
+    });
+  }
+
+  void _selectClip(int clipIndex, double cursorInClip) {}
+
+  void _moveCursor(double timeInSeconds) {}
 
   Future<String> _getUniqueFilePath(String directory, String baseName) async {
     final editedName = '${baseName}_edited.mp4';
@@ -134,6 +226,8 @@ class _HomeScreenState extends State<HomeScreen> {
       mixAudio: _mixTracks,
       trimSeconds: _trimEnabled ? _trimSeconds : null,
       trimMode: _trimMode,
+      clips: _clips,
+      exportSettings: _exportSettings,
     );
     
     setState(() => _isLoading = false);
@@ -156,28 +250,20 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Column(
           children: [
-            // Верхняя панель (только логотип)
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
                   const Text(
                     'SoViCut',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
-                    ),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange),
                   ),
                 ],
               ),
             ),
-            
-            // Основная область
             Expanded(
               child: Row(
                 children: [
-                  // Preview Area (70%)
                   Expanded(
                     flex: 7,
                     child: Padding(
@@ -200,7 +286,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                  // Tool Panel (30%)
                   Expanded(
                     flex: 3,
                     child: ToolPanel(
@@ -222,47 +307,56 @@ class _HomeScreenState extends State<HomeScreen> {
                       onMixEnabledChanged: (val) => setState(() => _mixTracks = val),
                       clips: _clips,
                       videoPath: _videoPath,
+                      onDeleteClip: _deleteClip,
+                      onRestoreClip: _restoreClip,
+                      originalAudioBitrate: _originalAudioBitrate,
+                      originalSampleRate: _originalSampleRate,
+                      originalChannels: _originalChannels,
+                      onExportSettingsChanged: (settings) {
+                        setState(() {
+                          _exportSettings = settings;
+                        });
+                      },
                     ),
                   ),
                 ],
               ),
             ),
-            
-            // Нижняя панель: таймлайн слева, кнопка экспорта справа
+            TimelineWidget(
+              clips: _clips,
+              onSplit: (index, splitTime) => _splitClip(index, splitTime),
+              onDelete: _deleteClip,
+              onRestore: _restoreClip,
+              onSelectClip: _selectClip,
+              onCursorMoved: _moveCursor,
+            ),
             Container(
               decoration: BoxDecoration(
                 color: Colors.grey[900],
-                border: Border(
-                  top: BorderSide(color: Colors.grey[800]!, width: 1),
-                ),
+                border: Border(top: BorderSide(color: Colors.grey[800]!, width: 1)),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TimelineWidget(
-                      clips: _clips,
-                      onSplit: _splitClip,
-                      onDelete: _deleteClip,
-                      onRestore: _restoreClip,
-                    ),
-                  ),
-                  Container(
-                    width: 120,
-                    padding: const EdgeInsets.all(8),
-                    child: ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _export,
-                      icon: _isLoading
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.save, size: 16),
-                      label: Text(_isLoading ? '...' : 'Экспорт'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _export,
+                        icon: _isLoading
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.save, size: 16),
+                        label: Text(_isLoading ? '...' : 'Экспорт'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -270,4 +364,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+class AudioInfo {
+  final int bitrate;
+  final int sampleRate;
+  final int channels;
+  AudioInfo({required this.bitrate, required this.sampleRate, required this.channels});
 }

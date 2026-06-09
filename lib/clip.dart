@@ -3,7 +3,8 @@ class Clip {
   final String sourcePath;
   double startTime;   // секунды от начала исходного видео
   double endTime;     // секунды
-  bool isVisible;     // видим ли на таймлайне
+  bool isVisible;     // видим ли на таймлайне (false = удалён, серый)
+  bool isSelected;    // выбран ли для операций
 
   Clip({
     required this.id,
@@ -11,6 +12,7 @@ class Clip {
     required this.startTime,
     required this.endTime,
     this.isVisible = true,
+    this.isSelected = false,
   });
 
   double get duration => endTime - startTime;
@@ -21,6 +23,7 @@ class Clip {
     double? startTime,
     double? endTime,
     bool? isVisible,
+    bool? isSelected,
   }) {
     return Clip(
       id: id ?? this.id,
@@ -28,6 +31,7 @@ class Clip {
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
       isVisible: isVisible ?? this.isVisible,
+      isSelected: isSelected ?? this.isSelected,
     );
   }
 }

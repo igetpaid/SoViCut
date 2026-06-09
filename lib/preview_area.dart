@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 
-class PreviewArea extends StatefulWidget {
+class PreviewArea extends StatelessWidget {
   final String? videoPath;
   final bool isDragging;
   final Function(DropDoneDetails) onDragDone;
@@ -19,83 +19,70 @@ class PreviewArea extends StatefulWidget {
     required this.onTap,
   });
 
-  @override
-  State<PreviewArea> createState() => _PreviewAreaState();
-}
-
-class _PreviewAreaState extends State<PreviewArea> {
-  bool _isHovering = false;
+  String get _fileName {
+    if (videoPath == null) return '';
+    return videoPath!.split('\\').last;
+  }
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: (_) => setState(() => _isHovering = true),
-      onExit: (_) => setState(() => _isHovering = false),
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: videoPath == null ? onTap : null,
         child: DropTarget(
-          onDragEntered: (_) => widget.onDragEntered(),
-          onDragExited: (_) => widget.onDragExited(),
-          onDragDone: widget.onDragDone,
+          onDragEntered: (_) => onDragEntered(),
+          onDragExited: (_) => onDragExited(),
+          onDragDone: onDragDone,
           child: Container(
             width: double.infinity,
             height: double.infinity,
             color: Colors.black,
-            child: Center(
-              child: widget.videoPath == null
-                  ? Column(
+            child: videoPath == null
+                ? Center(
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          widget.isDragging ? Icons.file_upload : Icons.video_library,
+                          isDragging ? Icons.file_upload : Icons.video_library,
                           size: 64,
-                          color: widget.isDragging || _isHovering ? Colors.orange : Colors.grey,
+                          color: isDragging ? Colors.orange : Colors.grey,
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          widget.isDragging ? 'Отпустите видео' : 'Нажмите или перетащите видео',
+                          isDragging ? 'Отпустите видео' : 'Нажмите или перетащите видео',
                           style: TextStyle(
-                            color: widget.isDragging || _isHovering ? Colors.orange : Colors.grey,
+                            color: isDragging ? Colors.orange : Colors.grey,
                             fontSize: 14,
                           ),
                         ),
                         const SizedBox(height: 8),
-                        if (!widget.isDragging && !_isHovering)
+                        if (!isDragging)
                           const Text(
                             'чтобы начать работу',
                             style: TextStyle(color: Colors.grey, fontSize: 12),
                           ),
                       ],
-                    )
-                  : Stack(
-                      fit: StackFit.expand,
+                    ),
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Center(
-                          child: Text(
-                            'Плеер будет здесь\n${widget.videoPath!.split('\\').last}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white),
-                          ),
+                        const Icon(Icons.play_circle_filled, size: 64, color: Colors.orange),
+                        const SizedBox(height: 16),
+                        Text(
+                          _fileName,
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          textAlign: TextAlign.center,
                         ),
-                        Positioned(
-                          bottom: 8,
-                          right: 8,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.drag_handle,
-                              size: 20,
-                              color: Colors.grey,
-                            ),
-                          ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Плеер временно отключён',
+                          style: TextStyle(color: Colors.grey, fontSize: 10),
                         ),
                       ],
                     ),
-            ),
+                  ),
           ),
         ),
       ),
