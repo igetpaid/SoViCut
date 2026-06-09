@@ -1,5 +1,5 @@
 import 'dart:io';
-import '../models/audio_track.dart';
+import 'audio_track.dart';
 
 class FFmpegService {
   static Future<List<AudioTrack>> analyzeAudio(String videoPath) async {

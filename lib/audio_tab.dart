@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/audio_track.dart';
+import 'audio_track.dart';
 
-class AudioPanel extends StatefulWidget {
+class AudioTab extends StatefulWidget {
   final bool isEnabled;
   final Function(bool) onEnabledChanged;
   final List<AudioTrack> tracks;
@@ -9,7 +9,7 @@ class AudioPanel extends StatefulWidget {
   final bool mixEnabled;
   final Function(bool) onMixEnabledChanged;
   
-  const AudioPanel({
+  const AudioTab({
     super.key,
     required this.isEnabled,
     required this.onEnabledChanged,
@@ -20,32 +20,14 @@ class AudioPanel extends StatefulWidget {
   });
 
   @override
-  State<AudioPanel> createState() => _AudioPanelState();
+  State<AudioTab> createState() => _AudioTabState();
 }
 
-class _AudioPanelState extends State<AudioPanel> {
-  void _toggleTrack(int index) {
-    setState(() {
-      widget.tracks[index].isEnabled = !widget.tracks[index].isEnabled;
-    });
-    widget.onTracksChanged(widget.tracks);
-  }
-
-  void _changeVolume(int index, double value) {
-    setState(() {
-      widget.tracks[index].volumePercent = value;
-    });
-    widget.onTracksChanged(widget.tracks);
-  }
-
+class _AudioTabState extends State<AudioTab> {
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(16),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -56,14 +38,11 @@ class _AudioPanelState extends State<AudioPanel> {
                 onChanged: (val) => widget.onEnabledChanged(val ?? false),
                 activeColor: Colors.orange,
               ),
-              const Text(
-                'Управление аудио',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              const Text('Включить аудио', style: TextStyle(fontSize: 16)),
             ],
           ),
           if (widget.isEnabled) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Checkbox(
@@ -71,11 +50,13 @@ class _AudioPanelState extends State<AudioPanel> {
                   onChanged: (val) => widget.onMixEnabledChanged(val ?? false),
                   activeColor: Colors.orange,
                 ),
-                const Text('Объединить все аудиодорожки в одну'),
+                const Text('Объединить все дорожки в одну'),
               ],
             ),
-            const SizedBox(height: 12),
-            ...widget.tracks.asMap().entries.map((entry) => _buildTrackItem(entry.key, entry.value)),
+            const SizedBox(height: 16),
+            ...widget.tracks.asMap().entries.map((entry) => 
+              _buildTrackItem(entry.key, entry.value)
+            ),
             if (widget.tracks.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(16),
@@ -124,7 +105,9 @@ class _AudioPanelState extends State<AudioPanel> {
                     max: 200,
                     divisions: 200,
                     activeColor: Colors.orange,
-                    onChanged: track.isEnabled ? (val) => _changeVolume(index, val) : null,
+                    onChanged: track.isEnabled 
+                        ? (val) => _changeVolume(index, val) 
+                        : null,
                   ),
                 ),
                 SizedBox(
@@ -144,5 +127,19 @@ class _AudioPanelState extends State<AudioPanel> {
         ),
       ),
     );
+  }
+
+  void _toggleTrack(int index) {
+    setState(() {
+      widget.tracks[index].isEnabled = !widget.tracks[index].isEnabled;
+    });
+    widget.onTracksChanged(widget.tracks);
+  }
+
+  void _changeVolume(int index, double value) {
+    setState(() {
+      widget.tracks[index].volumePercent = value;
+    });
+    widget.onTracksChanged(widget.tracks);
   }
 }

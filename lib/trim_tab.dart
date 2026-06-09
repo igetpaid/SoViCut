@@ -1,35 +1,47 @@
 import 'package:flutter/material.dart';
 
-class TrimWidget extends StatefulWidget {
+class TrimTab extends StatefulWidget {
   final bool isEnabled;
   final Function(bool) onEnabledChanged;
   final Function(double seconds, int mode) onTrimChanged;
+  final double initialSeconds;
+  final int initialMode;
   
-  const TrimWidget({
+  const TrimTab({
     super.key,
     required this.isEnabled,
     required this.onEnabledChanged,
     required this.onTrimChanged,
+    this.initialSeconds = 10,
+    this.initialMode = 0,
   });
 
   @override
-  State<TrimWidget> createState() => _TrimWidgetState();
+  State<TrimTab> createState() => _TrimTabState();
 }
 
-class _TrimWidgetState extends State<TrimWidget> {
-  final TextEditingController _secondsController = TextEditingController(text: '10');
-  int _trimMode = 0;
-
-  void _notify() {
-    final seconds = double.tryParse(_secondsController.text) ?? 10;
-    print('=== TRIM WIDGET: seconds=$seconds, mode=$_trimMode ===');
-    widget.onTrimChanged(seconds, _trimMode);
-  }
+class _TrimTabState extends State<TrimTab> {
+  late final TextEditingController _secondsController;
+  late int _trimMode;
 
   @override
   void initState() {
     super.initState();
+    _secondsController = TextEditingController(text: widget.initialSeconds.toString());
+    _trimMode = widget.initialMode;
     _secondsController.addListener(_notify);
+  }
+
+  @override
+  void didUpdateWidget(TrimTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Обновляем значения, если они изменились снаружи
+    if (widget.initialSeconds != oldWidget.initialSeconds) {
+      _secondsController.text = widget.initialSeconds.toString();
+    }
+    if (widget.initialMode != oldWidget.initialMode) {
+      _trimMode = widget.initialMode;
+    }
   }
 
   @override
@@ -39,14 +51,15 @@ class _TrimWidgetState extends State<TrimWidget> {
     super.dispose();
   }
 
+  void _notify() {
+    final seconds = double.tryParse(_secondsController.text) ?? 10;
+    widget.onTrimChanged(seconds, _trimMode);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[900],
-        borderRadius: BorderRadius.circular(16),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -56,18 +69,15 @@ class _TrimWidgetState extends State<TrimWidget> {
                 value: widget.isEnabled,
                 onChanged: (val) {
                   widget.onEnabledChanged(val ?? false);
-                  if (val == true) _notify(); // при включении тоже отправляем
+                  if (val == true) _notify();
                 },
                 activeColor: Colors.orange,
               ),
-              const Text(
-                'Обрезка видео',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              const Text('Включить обрезку', style: TextStyle(fontSize: 16)),
             ],
           ),
           if (widget.isEnabled) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             SegmentedButton<int>(
               segments: const [
                 ButtonSegment(value: 0, label: Text('Оставить первые N секунд')),
@@ -81,13 +91,13 @@ class _TrimWidgetState extends State<TrimWidget> {
                 _notify();
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextField(
               controller: _secondsController,
               style: const TextStyle(color: Colors.white),
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                hintText: 'Секунд',
+                hintText: 'Секунд (1–1000)',
                 hintStyle: TextStyle(color: Colors.grey),
                 border: OutlineInputBorder(),
               ),
