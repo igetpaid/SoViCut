@@ -10,6 +10,10 @@ import 'preview_area.dart';
 import 'timeline_widget.dart';
 import 'tool_panel.dart';
 import 'export_settings_tab.dart';
+import 'export_strategy.dart';
+import 'concat_strategy.dart';
+import 'transcode_strategy.dart';
+import 'short_clips_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -67,6 +71,83 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _previewPosition = timeInSeconds / totalDur;
       });
+    }
+  }
+
+  /// Проверяет наличие коротких фрагментов (< 0.5 сек)
+  ShortClipCheckResult _checkShortClips() {
+    final List<int> shortIndices = [];
+    final List<double> shortDurations = [];
+    for (int i = 0; i < _clips.length; i++) {
+      final clip = _clips[i];
+      if (clip.isVisible && clip.duration < 0.5) {
+        shortIndices.add(i);
+        shortDurations.add(clip.duration);
+      }
+    }
+    return ShortClipCheckResult(
+      hasShortClips: shortIndices.isNotEmpty,
+      shortClipIndices: shortIndices,
+      shortClipDurations: shortDurations,
+      threshold: 0.5,
+    );
+  }
+
+  Future<void> _exportWithStrategy(ExportStrategy strategy) async {
+    if (_videoPath == null) return;
+    
+    setState(() => _isLoading = true);
+    
+    final dir = await getDownloadsDirectory();
+    final originalFileName = _videoPath!.split('\\').last;
+    final nameWithoutExt = originalFileName.lastIndexOf('.') != -1
+        ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+        : originalFileName;
+    final baseName = nameWithoutExt;
+    final outPath = await _getUniqueFilePath(dir!.path, baseName);
+    
+    final success = await strategy.export(
+      inputPath: _videoPath!,
+      outputPath: outPath,
+      audioTracks: _audioEnabled ? _audioTracks : [],
+      mixAudio: _mixTracks,
+      trimSeconds: _trimEnabled ? _trimSeconds : null,
+      trimMode: _trimMode,
+      clips: _clips,
+      exportSettings: _exportSettings,
+    );
+    
+    setState(() => _isLoading = false);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(success ? '✅ Экспорт завершён!\n$outPath' : '❌ Ошибка экспорта')),
+    );
+  }
+
+  Future<void> _export() async {
+    if (_videoPath == null) return;
+    
+    final shortClipsCheck = _checkShortClips();
+    
+    if (shortClipsCheck.hasShortClips) {
+      // Показываем диалог выбора стратегии
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => ShortClipsDialog(
+          checkResult: shortClipsCheck,
+          onStrategySelected: (strategy) {
+            Navigator.pop(context);
+            _exportWithStrategy(strategy);
+          },
+          onCancel: () {
+            Navigator.pop(context);
+          },
+        ),
+      );
+    } else {
+      // Нет коротких фрагментов — используем стандартную стратегию ConcatStrategy
+      await _exportWithStrategy(ConcatStrategy());
     }
   }
 
@@ -230,37 +311,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       counter++;
     }
-  }
-
-  Future<void> _export() async {
-    if (_videoPath == null) return;
-    setState(() => _isLoading = true);
-    final dir = await getDownloadsDirectory();
-    
-    final originalFileName = _videoPath!.split('\\').last;
-    final nameWithoutExt = originalFileName.lastIndexOf('.') != -1
-        ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-        : originalFileName;
-    
-    final baseName = nameWithoutExt;
-    final outPath = await _getUniqueFilePath(dir!.path, baseName);
-    
-    final success = await FFmpegService.exportVideo(
-      inputPath: _videoPath!,
-      outputPath: outPath,
-      audioTracks: _audioEnabled ? _audioTracks : [],
-      mixAudio: _mixTracks,
-      trimSeconds: _trimEnabled ? _trimSeconds : null,
-      trimMode: _trimMode,
-      clips: _clips,
-      exportSettings: _exportSettings,
-    );
-    
-    setState(() => _isLoading = false);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? '✅ Экспорт завершён!\n$outPath' : '❌ Ошибка экспорта')),
-    );
   }
 
   @override

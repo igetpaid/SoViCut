@@ -172,6 +172,8 @@ class FFmpegService {
       
       args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
       args.addAll(['-copyts', '-start_at_zero']);
+      args.addAll(['-avoid_negative_ts', 'make_zero']);
+      args.addAll(['-fflags', '+genpts']);  // ← ключевое добавление
       
       if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
         args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
