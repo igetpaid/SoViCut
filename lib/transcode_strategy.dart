@@ -21,10 +21,11 @@ class TranscodeStrategy implements ExportStrategy {
     required List<Clip> clips,
     ExportSettings? exportSettings,
   }) async {
-    // 1. Оригинальные названия с корректными индексами (ffprobe → ffmpeg)
+    // 1. Получаем оригинальные названия с корректными индексами
     final allStreams = await MediaInfoService.getAudioStreams(inputPath);
     final Map<int, String> originalTitle = {};
     for (final stream in allStreams) {
+      // ffprobe index (1,2,3) -> ffmpeg index (0,1,2)
       originalTitle[stream.index - 1] = stream.title;
     }
     print('Оригинальные названия (ffmpeg-индексы): $originalTitle');
@@ -44,7 +45,7 @@ class TranscodeStrategy implements ExportStrategy {
 
     final List<String> tempFiles = [];
 
-    // 4. Обрабатываем каждый фрагмент
+    // 4. Обработка каждого фрагмента – полное перекодирование
     for (int i = 0; i < activeClips.length; i++) {
       final clip = activeClips[i];
       final tempPath = '${(await getTemporaryDirectory()).path}\\temp_${DateTime.now().millisecondsSinceEpoch}_$i.mp4';
@@ -54,15 +55,13 @@ class TranscodeStrategy implements ExportStrategy {
         '-i', inputPath,
         '-ss', clip.startTime.toStringAsFixed(6),
         '-t', clip.duration.toStringAsFixed(6),
-        // Видео: всегда перекодируем в единый формат
         '-map', '0:v:0',
         '-c:v', videoCodec, '-crf', crf.toString(),
-        '-vsync', 'cfr',
-        '-pix_fmt', 'yuv420p',
+        '-vsync', 'cfr', '-pix_fmt', 'yuv420p',
         '-g', '12', '-keyint_min', '12',
       ];
 
-      // Аудио: ffmpeg-индексы выбранных дорожек
+      // Аудио: какие дорожки обрабатывать
       final enabledFfmpegIndices = audioTracks
           .where((t) => t.isEnabled)
           .map((t) => t.index - 1)
@@ -72,7 +71,7 @@ class TranscodeStrategy implements ExportStrategy {
           : enabledFfmpegIndices;
 
       if (mixAudio && indicesToProcess.length > 1) {
-        // Смешивание нескольких дорожек в одну
+        // Смешивание
         final List<String> filterParts = [];
         final List<String> mixInputs = [];
         final List<String> trackNames = [];
@@ -101,7 +100,7 @@ class TranscodeStrategy implements ExportStrategy {
           '-ar', sampleRate.toString(), '-ac', channels.toString(),
         ]);
       } else {
-        // Раздельные дорожки – перекодируем каждую
+        // Раздельные дорожки
         for (int j = 0; j < indicesToProcess.length; j++) {
           final ffIdx = indicesToProcess[j];
           args.addAll(['-map', '0:a:$ffIdx']);
@@ -116,17 +115,17 @@ class TranscodeStrategy implements ExportStrategy {
 
       args.addAll(['-movflags', '+faststart', '-y', tempPath]);
 
-      print('Фрагмент ${i + 1}: ffmpeg ${args.join(' ')}');
+      print('Фрагмент ${i+1}: ffmpeg ${args.join(' ')}');
       final result = await Process.run('ffmpeg', args, runInShell: true);
       if (result.exitCode != 0) {
-        print('Ошибка фрагмента ${i + 1}: ${result.stderr}');
+        print('Ошибка фрагмента ${i+1}: ${result.stderr}');
         return false;
       }
 
-      // Проверка, что файл создался
+      // Проверка создания файла
       final tempFile = File(tempPath);
       if (!await tempFile.exists() || await tempFile.length() < 1024) {
-        print('Фрагмент ${i + 1} не создан или слишком мал (<1KB)');
+        print('Фрагмент ${i+1} не создан или слишком мал (<1KB)');
         return false;
       }
     }
@@ -141,16 +140,10 @@ class TranscodeStrategy implements ExportStrategy {
     }
     await concatFile.writeAsString(content.toString());
 
-    // Определяем параметры первого фрагмента
+    // Получаем количество аудиопотоков из первого фрагмента
     final firstInfo = await MediaInfoService.getMediaInfo(tempFiles.first);
-    final bool hasVideo = firstInfo.videoStreams.isNotEmpty;
     final int audioCount = firstInfo.audioStreams.length;
-    print('Первый фрагмент: video=$hasVideo, audio=$audioCount');
-
-    if (!hasVideo) {
-      print('КРИТИЧЕСКАЯ ОШИБКА: первый фрагмент не содержит видео!');
-      return false;
-    }
+    print('Аудиопотоков в фрагментах: $audioCount');
 
     final List<String> concatArgs = [
       '-f', 'concat', '-safe', '0', '-i', concatPath,
@@ -160,6 +153,14 @@ class TranscodeStrategy implements ExportStrategy {
       concatArgs.addAll(['-map', '0:a:$i']);
     }
     concatArgs.addAll(['-c:v', 'copy', '-c:a', 'copy', '-movflags', '+faststart']);
+
+    // Восстанавливаем оригинальные названия (обходим потерю метаданных при склейке)
+    for (int i = 0; i < audioCount; i++) {
+      final title = originalTitle[i] ?? '';
+      if (title.isNotEmpty) {
+        concatArgs.addAll(['-metadata:s:a:$i', 'title=$title']);
+      }
+    }
 
     if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
       concatArgs.insertAll(3, ['-t', trimSeconds.toStringAsFixed(2)]);
