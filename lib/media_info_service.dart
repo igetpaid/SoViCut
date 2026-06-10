@@ -131,7 +131,6 @@ class MediaInfoService {
     final container = await _getContainerInfo(path);
     final videoStreams = await _getVideoStreams(path);
     final audioStreams = await _getAudioStreams(path);
-    
     return MediaInfo(
       container: container,
       videoStreams: videoStreams,
@@ -150,10 +149,8 @@ class MediaInfoService {
       ],
       runInShell: true,
     );
-    
     final json = jsonDecode(result.stdout.toString());
     final format = json['format'];
-    
     return ContainerInfo(
       format: format['format_name']?.toString() ?? 'unknown',
       size: _parseInt(format['size']),
@@ -174,11 +171,9 @@ class MediaInfoService {
       ],
       runInShell: true,
     );
-    
     final List<VideoStreamInfo> streams = [];
     final json = jsonDecode(result.stdout.toString());
     final streamsJson = json['streams'] as List? ?? [];
-    
     for (final stream in streamsJson) {
       final fpsStr = stream['r_frame_rate']?.toString() ?? '0/1';
       final fpsParts = fpsStr.split('/');
@@ -186,7 +181,6 @@ class MediaInfoService {
       if (fpsParts.length == 2) {
         fps = _parseDouble(fpsParts[0]) / _parseDouble(fpsParts[1]);
       }
-      
       streams.add(VideoStreamInfo(
         index: _parseInt(stream['index']),
         codec: stream['codec_name']?.toString() ?? 'unknown',
@@ -198,7 +192,6 @@ class MediaInfoService {
         colorSpace: stream['color_space']?.toString() ?? 'unknown',
       ));
     }
-    
     return streams;
   }
   
@@ -214,22 +207,17 @@ class MediaInfoService {
       ],
       runInShell: true,
     );
-    
     final List<AudioStreamInfo> streams = [];
     final json = jsonDecode(result.stdout.toString());
     final streamsJson = json['streams'] as List? ?? [];
-    
     for (final stream in streamsJson) {
       final tags = stream['tags'] as Map? ?? {};
       final disposition = stream['disposition'] as Map? ?? {};
-      
+      final int index = _parseInt(stream['index']);
       String title = tags['title']?.toString() ?? '';
       if (title.isEmpty) {
         title = tags['TAG:title']?.toString() ?? '';
       }
-      
-      final index = _parseInt(stream['index']);
-      
       streams.add(AudioStreamInfo(
         index: index,
         title: title,
@@ -242,7 +230,8 @@ class MediaInfoService {
         isForced: (_parseInt(disposition['forced']) == 1),
       ));
     }
-    
+    // Сортируем по индексу для предсказуемого порядка
+    streams.sort((a, b) => a.index.compareTo(b.index));
     return streams;
   }
   

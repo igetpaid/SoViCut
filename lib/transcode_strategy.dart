@@ -10,137 +10,6 @@ class TranscodeStrategy implements ExportStrategy {
   @override
   String get name => 'Полное перекодирование (медленно, но качественно)';
 
-  Future<String> _transcodeClip({
-    required String inputPath,
-    required Clip clip,
-    required List<AudioTrack> audioTracks,
-    required bool mixAudio,
-    required bool needAudioReencode,
-    required int targetAudioBitrate,
-    required String targetAudioCodec,
-    required int targetSampleRate,
-    required int targetChannels,
-    required String videoCodec,
-    required int crf,
-    required bool copyVideo,
-    required ExportSettings? exportSettings,
-    required Map<int, String> originalTitles,
-  }) async {
-    final tempPath = '${(await getTemporaryDirectory()).path}\\sovicut_transcoded_${DateTime.now().millisecondsSinceEpoch}.mp4';
-    
-    final List<String> args = [];
-    
-    args.addAll(['-i', inputPath]);
-    args.addAll(['-ss', clip.startTime.toStringAsFixed(6)]);
-    args.addAll(['-t', clip.duration.toStringAsFixed(6)]);
-    
-    args.addAll(['-map', '0:v:0']);
-    args.addAll(['-c:v', videoCodec]);
-    args.addAll(['-crf', crf.toString()]);
-    args.addAll(['-g', '6']);
-    args.addAll(['-keyint_min', '6']);
-    
-    final enabledIndices = <int>[];
-    for (int i = 0; i < audioTracks.length; i++) {
-      if (audioTracks[i].isEnabled) {
-        enabledIndices.add(i);
-      }
-    }
-    
-    print('Перекодирование фрагмента ${clip.duration.toStringAsFixed(3)} сек');
-    print('Активных аудиодорожек (по настройкам): ${enabledIndices.length}');
-    
-    if (!needAudioReencode || enabledIndices.isEmpty) {
-      final int audioCount = originalTitles.length;
-      print('Копирование ВСЕХ оригинальных аудиодорожек: $audioCount');
-      for (int i = 0; i < audioCount; i++) {
-        args.addAll(['-map', '0:a:$i']);
-        final title = originalTitles[i] ?? '';
-        if (title.isNotEmpty) {
-          args.addAll(['-metadata:s:a:$i', 'title=$title']);
-        }
-      }
-      args.addAll(['-c:a', 'copy']);
-    } else {
-      print('Обработка выбранных аудиодорожек: ${enabledIndices.length}');
-      final List<String> audioFilters = [];
-      final List<String> audioMaps = [];
-      
-      if (mixAudio && enabledIndices.length > 1) {
-        final List<String> filterParts = [];
-        final List<String> mixInputs = [];
-        final List<String> trackNames = [];
-        
-        for (int i = 0; i < enabledIndices.length; i++) {
-          final track = audioTracks[enabledIndices[i]];
-          final factor = track.volumePercent / 100;
-          final title = originalTitles[track.index] ?? '';
-          trackNames.add(title);
-          
-          if (factor != 1.0) {
-            filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
-            mixInputs.add('[a$i]');
-          } else {
-            mixInputs.add('[0:a:${track.index}]');
-          }
-        }
-        
-        if (filterParts.isNotEmpty) {
-          audioFilters.add(filterParts.join('; '));
-        }
-        audioFilters.add('${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]');
-        audioMaps.addAll(['-map', '[aout]']);
-        
-        final mixedTitle = 'Mixed: ${trackNames.join(" + ")}';
-        args.addAll(['-metadata:s:a:0', 'title=$mixedTitle']);
-        print('Режим: объединение дорожек -> $mixedTitle');
-      } else {
-        int outputIndex = 0;
-        for (int i = 0; i < enabledIndices.length; i++) {
-          final track = audioTracks[enabledIndices[i]];
-          final factor = track.volumePercent / 100;
-          final title = originalTitles[track.index] ?? '';
-          
-          if (factor != 1.0) {
-            audioFilters.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
-            audioMaps.addAll(['-map', '[a$i]']);
-          } else {
-            audioMaps.addAll(['-map', '0:a:${track.index}']);
-          }
-          
-          if (title.isNotEmpty) {
-            args.addAll(['-metadata:s:a:$outputIndex', 'title=$title']);
-          }
-          outputIndex++;
-        }
-        print('Режим: раздельные дорожки');
-      }
-      
-      if (audioFilters.isNotEmpty) {
-        args.addAll(['-filter_complex', audioFilters.join('; ')]);
-      }
-      args.addAll(audioMaps);
-      args.addAll(['-c:a', targetAudioCodec, '-b:a', '${targetAudioBitrate}k']);
-      if (exportSettings != null && exportSettings.bitrateMode == BitrateMode.vbr) {
-        args.addAll(['-q:a', '2']);
-      }
-      args.addAll(['-ar', targetSampleRate.toString()]);
-      args.addAll(['-ac', targetChannels.toString()]);
-    }
-    
-    args.addAll(['-y', tempPath]);
-    
-    print('Команда перекодирования: ffmpeg ${args.join(' ')}');
-    
-    final result = await Process.run('ffmpeg', args, runInShell: true);
-    if (result.exitCode != 0) {
-      print('STDERR: ${result.stderr}');
-      throw Exception('Ошибка перекодирования фрагмента: ${result.stderr}');
-    }
-    
-    return tempPath;
-  }
-
   @override
   Future<bool> export({
     required String inputPath,
@@ -152,169 +21,186 @@ class TranscodeStrategy implements ExportStrategy {
     required List<Clip> clips,
     ExportSettings? exportSettings,
   }) async {
-    final List<String> args = [];
-    final List<String> tempFiles = [];
-    
-    final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
-    
-    final Map<int, String> originalTitles = exportSettings?.originalTrackTitles ?? {};
-    print('=== ОРИГИНАЛЬНЫЕ НАЗВАНИЯ АУДИОДОРОЖЕК ИЗ НАСТРОЕК ===');
-    originalTitles.forEach((index, title) {
-      print('  $index: "$title"');
-    });
-    
-    final int originalBitrateValue = await _getAudioBitrate(inputPath);
-    final bool useCustomSettings = exportSettings != null && 
-        (exportSettings.audioBitrate != (originalBitrateValue ~/ 1000) ||
-         exportSettings.audioCodec != AudioCodec.aac ||
-         exportSettings.bitrateMode != BitrateMode.cbr ||
-         exportSettings.sampleRate != 48000 ||
-         exportSettings.channels != 2 ||
-         exportSettings.videoQuality != VideoQuality.source);
-    
-    int targetAudioBitrate;
-    String targetAudioCodec;
-    int targetSampleRate;
-    int targetChannels;
-    String videoCodec;
-    int crf;
-    bool copyVideo = true;
-    
-    if (useCustomSettings && exportSettings != null) {
-      targetAudioBitrate = exportSettings.audioBitrate;
-      targetAudioCodec = exportSettings.audioCodecName;
-      targetSampleRate = exportSettings.sampleRate;
-      targetChannels = exportSettings.channels;
-      videoCodec = exportSettings.videoCodecName;
-      crf = exportSettings.crf;
-      copyVideo = exportSettings.videoQuality == VideoQuality.source;
-    } else {
-      targetAudioBitrate = originalBitrateValue ~/ 1000;
-      targetAudioCodec = 'aac';
-      targetSampleRate = 48000;
-      targetChannels = 2;
-      videoCodec = 'libx264';
-      crf = 23;
-      copyVideo = true;
+    // 1. Оригинальные названия с корректными индексами (ffprobe → ffmpeg)
+    final allStreams = await MediaInfoService.getAudioStreams(inputPath);
+    final Map<int, String> originalTitle = {};
+    for (final stream in allStreams) {
+      originalTitle[stream.index - 1] = stream.title;
     }
-    
+    print('Оригинальные названия (ffmpeg-индексы): $originalTitle');
+
+    // 2. Параметры экспорта
+    final int defaultBitrate = await _getAudioBitrate(inputPath);
+    final int audioBitrate = exportSettings?.audioBitrate ?? (defaultBitrate ~/ 1000);
+    final String audioCodec = exportSettings?.audioCodecName ?? 'aac';
+    final int sampleRate = exportSettings?.sampleRate ?? 48000;
+    final int channels = exportSettings?.channels ?? 2;
+    final String videoCodec = exportSettings?.videoCodecName ?? 'libx264';
+    final int crf = exportSettings?.crf ?? 23;
+
+    // 3. Активные фрагменты
     final activeClips = clips.where((c) => c.isVisible).toList();
-    final List<String> processedFiles = [];
-    
-    print('=== ПЕРЕКОДИРОВАНИЕ ВСЕХ ФРАГМЕНТОВ ===');
-    print('Всего активных фрагментов: ${activeClips.length}');
-    
+    if (activeClips.isEmpty) return false;
+
+    final List<String> tempFiles = [];
+
+    // 4. Обрабатываем каждый фрагмент
     for (int i = 0; i < activeClips.length; i++) {
       final clip = activeClips[i];
-      print('\n--- Обработка фрагмента ${i + 1} ---');
-      
-      final transcoded = await _transcodeClip(
-        inputPath: inputPath,
-        clip: clip,
-        audioTracks: audioTracks,
-        mixAudio: mixAudio,
-        needAudioReencode: needAudioReencode,
-        targetAudioBitrate: targetAudioBitrate,
-        targetAudioCodec: targetAudioCodec,
-        targetSampleRate: targetSampleRate,
-        targetChannels: targetChannels,
-        videoCodec: videoCodec,
-        crf: crf,
-        copyVideo: copyVideo,
-        exportSettings: exportSettings,
-        originalTitles: originalTitles,
-      );
-      processedFiles.add(transcoded);
-      tempFiles.add(transcoded);
+      final tempPath = '${(await getTemporaryDirectory()).path}\\temp_${DateTime.now().millisecondsSinceEpoch}_$i.mp4';
+      tempFiles.add(tempPath);
+
+      final List<String> args = [
+        '-i', inputPath,
+        '-ss', clip.startTime.toStringAsFixed(6),
+        '-t', clip.duration.toStringAsFixed(6),
+        // Видео: всегда перекодируем в единый формат
+        '-map', '0:v:0',
+        '-c:v', videoCodec, '-crf', crf.toString(),
+        '-vsync', 'cfr',
+        '-pix_fmt', 'yuv420p',
+        '-g', '12', '-keyint_min', '12',
+      ];
+
+      // Аудио: ffmpeg-индексы выбранных дорожек
+      final enabledFfmpegIndices = audioTracks
+          .where((t) => t.isEnabled)
+          .map((t) => t.index - 1)
+          .toList();
+      final List<int> indicesToProcess = enabledFfmpegIndices.isEmpty
+          ? List.generate(originalTitle.length, (i) => i)
+          : enabledFfmpegIndices;
+
+      if (mixAudio && indicesToProcess.length > 1) {
+        // Смешивание нескольких дорожек в одну
+        final List<String> filterParts = [];
+        final List<String> mixInputs = [];
+        final List<String> trackNames = [];
+        for (int j = 0; j < indicesToProcess.length; j++) {
+          final ffIdx = indicesToProcess[j];
+          final origIdx = ffIdx + 1;
+          final track = audioTracks.firstWhere((t) => t.index == origIdx);
+          final factor = track.volumePercent / 100;
+          final title = originalTitle[ffIdx] ?? 'Track ${ffIdx + 1}';
+          trackNames.add(title);
+          if (factor != 1.0) {
+            filterParts.add('[0:a:$ffIdx]volume=${factor.toStringAsFixed(2)}[a$j]');
+            mixInputs.add('[a$j]');
+          } else {
+            mixInputs.add('[0:a:$ffIdx]');
+          }
+        }
+        if (filterParts.isNotEmpty) {
+          args.addAll(['-filter_complex', filterParts.join('; ')]);
+        }
+        args.addAll([
+          '-filter_complex', '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]',
+          '-map', '[aout]',
+          '-metadata:s:a:0', 'title=Mixed: ${trackNames.join(" + ")}',
+          '-c:a', audioCodec, '-b:a', '${audioBitrate}k',
+          '-ar', sampleRate.toString(), '-ac', channels.toString(),
+        ]);
+      } else {
+        // Раздельные дорожки – перекодируем каждую
+        for (int j = 0; j < indicesToProcess.length; j++) {
+          final ffIdx = indicesToProcess[j];
+          args.addAll(['-map', '0:a:$ffIdx']);
+          final title = originalTitle[ffIdx] ?? 'Track ${ffIdx + 1}';
+          args.addAll(['-metadata:s:a:$j', 'title=$title']);
+        }
+        args.addAll([
+          '-c:a', audioCodec, '-b:a', '${audioBitrate}k',
+          '-ar', sampleRate.toString(), '-ac', channels.toString(),
+        ]);
+      }
+
+      args.addAll(['-movflags', '+faststart', '-y', tempPath]);
+
+      print('Фрагмент ${i + 1}: ffmpeg ${args.join(' ')}');
+      final result = await Process.run('ffmpeg', args, runInShell: true);
+      if (result.exitCode != 0) {
+        print('Ошибка фрагмента ${i + 1}: ${result.stderr}');
+        return false;
+      }
+
+      // Проверка, что файл создался
+      final tempFile = File(tempPath);
+      if (!await tempFile.exists() || await tempFile.length() < 1024) {
+        print('Фрагмент ${i + 1} не создан или слишком мал (<1KB)');
+        return false;
+      }
     }
-    
-    if (processedFiles.isEmpty) {
-      print('Нет активных фрагментов');
-      return false;
-    }
-    
-    print('\n=== СКЛЕЙКА ФРАГМЕНТОВ ===');
-    
-    final firstFileInfo = await MediaInfoService.getMediaInfo(processedFiles.first);
-    final audioStreamsCount = firstFileInfo.audioStreams.length;
-    print('Количество аудиопотоков в фрагментах: $audioStreamsCount');
-    
+
+    // 5. Склейка фрагментов
     final concatDir = await Directory.systemTemp.createTemp('sovicut_concat_final');
     final concatPath = '${concatDir.path}\\concat.txt';
     final concatFile = File(concatPath);
     final content = StringBuffer();
-    for (final file in processedFiles) {
+    for (final file in tempFiles) {
       content.writeln("file '$file'");
     }
     await concatFile.writeAsString(content.toString());
-    
-    args.clear();
-    args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
-    args.addAll(['-map', '0:v:0']);
-    
-    for (int i = 0; i < audioStreamsCount; i++) {
-      args.addAll(['-map', '0:a:$i']);
-      final title = originalTitles[i] ?? '';
-      if (title.isNotEmpty) {
-        args.addAll(['-metadata:s:a:$i', 'title=$title']);
-      }
+
+    // Определяем параметры первого фрагмента
+    final firstInfo = await MediaInfoService.getMediaInfo(tempFiles.first);
+    final bool hasVideo = firstInfo.videoStreams.isNotEmpty;
+    final int audioCount = firstInfo.audioStreams.length;
+    print('Первый фрагмент: video=$hasVideo, audio=$audioCount');
+
+    if (!hasVideo) {
+      print('КРИТИЧЕСКАЯ ОШИБКА: первый фрагмент не содержит видео!');
+      return false;
     }
-    
-    args.addAll(['-c:v', 'copy']);
-    args.addAll(['-c:a', 'copy']);
-    
+
+    final List<String> concatArgs = [
+      '-f', 'concat', '-safe', '0', '-i', concatPath,
+      '-map', '0:v:0',
+    ];
+    for (int i = 0; i < audioCount; i++) {
+      concatArgs.addAll(['-map', '0:a:$i']);
+    }
+    concatArgs.addAll(['-c:v', 'copy', '-c:a', 'copy', '-movflags', '+faststart']);
+
     if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
-      args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
+      concatArgs.insertAll(3, ['-t', trimSeconds.toStringAsFixed(2)]);
     }
-    
-    args.addAll(['-y', outputPath]);
-    
-    print('Финальная команда: ffmpeg ${args.join(' ')}');
-    
-    final result = await Process.run('ffmpeg', args, runInShell: true);
-    
+
+    concatArgs.addAll(['-y', outputPath]);
+
+    print('Склейка: ffmpeg ${concatArgs.join(' ')}');
+    final finalResult = await Process.run('ffmpeg', concatArgs, runInShell: true);
+
+    // Очистка
     for (final f in tempFiles) {
       try { await File(f).delete(); } catch (_) {}
     }
     try { await concatDir.delete(recursive: true); } catch (_) {}
-    
-    print('=== EXIT CODE: ${result.exitCode} ===');
-    if (result.exitCode != 0) {
-      print('=== STDERR ===');
-      print(result.stderr);
+
+    if (finalResult.exitCode != 0) {
+      print('Ошибка склейки: ${finalResult.stderr}');
       return false;
     }
-    
-    print('=== ЭКСПОРТ УСПЕШНО ЗАВЕРШЁН ===');
-    print('=== СОХРАНЕНО АУДИО ПОТОКОВ: $audioStreamsCount ===');
-    for (int i = 0; i < audioStreamsCount; i++) {
-      print('  - "${originalTitles[i] ?? ""}"');
-    }
+
+    print('✅ Экспорт успешно завершён: $outputPath');
     return true;
   }
 
-  static Future<int> _getAudioBitrate(String videoPath) async {
+  static Future<int> _getAudioBitrate(String path) async {
     try {
-      final result = await Process.run(
-        'ffprobe',
-        [
-          '-v', 'error',
-          '-show_entries', 'stream=codec_type,bit_rate',
-          '-of', 'default=noprint_wrappers=1:nokey=1',
-          videoPath
-        ],
-        runInShell: true,
-      );
-      final lines = result.stdout.toString().trim().split('\n');
+      final result = await Process.run('ffprobe', [
+        '-v', 'error',
+        '-show_entries', 'stream=codec_type,bit_rate',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        path
+      ], runInShell: true);
+      final lines = result.stdout.toString().split('\n');
       for (int i = 0; i < lines.length; i++) {
         if (lines[i] == 'audio' && i + 1 < lines.length) {
-          final bitrate = int.tryParse(lines[i + 1]);
-          if (bitrate != null && bitrate > 0) {
-            return bitrate;
-          }
+          final br = int.tryParse(lines[i + 1]);
+          if (br != null && br > 0) return br;
         }
       }
-    } catch (e) {}
+    } catch (_) {}
     return 192000;
   }
 }
