@@ -4,63 +4,13 @@ import 'audio_track.dart';
 import 'clip.dart';
 import 'export_settings_tab.dart';
 import 'export_strategy.dart';
+import 'media_info_service.dart';
 
 class TranscodeStrategy implements ExportStrategy {
   @override
   String get name => 'Полное перекодирование (медленно, но качественно)';
 
   static const double SHORT_CLIP_THRESHOLD = 0.5;
-
-  Future<bool> _isShortClip(Clip clip) async {
-    return clip.duration < SHORT_CLIP_THRESHOLD;
-  }
-
-  /// Получает оригинальные названия аудиодорожек из видео
-  Future<List<String>> _getAudioTrackTitles(String videoPath) async {
-    final result = await Process.run(
-      'ffprobe',
-      [
-        '-v', 'error',
-        '-show_entries', 'stream=index,codec_type,tags',
-        '-of', 'default=noprint_wrappers=1',
-        videoPath
-      ],
-      runInShell: true,
-    );
-
-    final List<String> titles = [];
-    final lines = result.stdout.toString().split('\n');
-    String? currentTitle;
-    int currentIndex = -1;
-
-    for (final line in lines) {
-      if (line.startsWith('index=')) {
-        currentIndex = int.parse(line.split('=')[1]);
-      } else if (line.startsWith('codec_type=audio')) {
-        // Начинаем новую аудиодорожку
-      } else if (line.startsWith('TAG:title=')) {
-        currentTitle = line.split('=').sublist(1).join('=');
-      } else if (line.startsWith('TAG:language=')) {
-        // Пока не используем
-      } else if (line.isEmpty && currentIndex >= 0) {
-        while (titles.length <= currentIndex) {
-          titles.add('');
-        }
-        titles[currentIndex] = currentTitle ?? 'Дорожка ${currentIndex + 1}';
-        currentTitle = null;
-      }
-    }
-
-    // Заполняем недостающие
-    for (int i = 0; i < titles.length; i++) {
-      if (titles[i].isEmpty) {
-        titles[i] = 'Дорожка ${i + 1}';
-      }
-    }
-
-    print('Оригинальные названия аудиодорожек: $titles');
-    return titles;
-  }
 
   Future<String> _transcodeClip({
     required String inputPath,
@@ -76,7 +26,7 @@ class TranscodeStrategy implements ExportStrategy {
     required int crf,
     required bool copyVideo,
     required ExportSettings? exportSettings,
-    required List<String> originalTrackTitles,
+    required List<AudioStreamInfo> originalAudioStreams,
   }) async {
     final tempPath = '${(await getTemporaryDirectory()).path}\\sovicut_transcoded_${DateTime.now().millisecondsSinceEpoch}.mp4';
     
@@ -103,24 +53,18 @@ class TranscodeStrategy implements ExportStrategy {
     print('Активных аудиодорожек (по настройкам): ${enabledIndices.length}');
     print('needAudioReencode: $needAudioReencode, mixAudio: $mixAudio');
     
-    if (!needAudioReencode) {
-      final int audioCount = await _getAudioStreamCount(inputPath);
+    if (!needAudioReencode || enabledIndices.isEmpty) {
+      final int audioCount = originalAudioStreams.length;
       print('Копирование ВСЕХ оригинальных аудиодорожек: $audioCount');
       for (int i = 0; i < audioCount; i++) {
         args.addAll(['-map', '0:a:$i']);
-        // Сохраняем оригинальное название
-        if (i < originalTrackTitles.length && originalTrackTitles[i].isNotEmpty) {
-          args.addAll(['-metadata:s:a:$i', 'title=${originalTrackTitles[i]}']);
+        // Сохраняем оригинальные метаданные
+        final stream = originalAudioStreams[i];
+        if (stream.title.isNotEmpty) {
+          args.addAll(['-metadata:s:a:$i', 'title=${stream.title}']);
         }
-      }
-      args.addAll(['-c:a', 'copy']);
-    } else if (enabledIndices.isEmpty) {
-      final int audioCount = await _getAudioStreamCount(inputPath);
-      print('Аудио-панель включена, но нет выбранных дорожек. Копируем все: $audioCount');
-      for (int i = 0; i < audioCount; i++) {
-        args.addAll(['-map', '0:a:$i']);
-        if (i < originalTrackTitles.length && originalTrackTitles[i].isNotEmpty) {
-          args.addAll(['-metadata:s:a:$i', 'title=${originalTrackTitles[i]}']);
+        if (stream.language.isNotEmpty) {
+          args.addAll(['-metadata:s:a:$i', 'language=${stream.language}']);
         }
       }
       args.addAll(['-c:a', 'copy']);
@@ -132,9 +76,27 @@ class TranscodeStrategy implements ExportStrategy {
       if (mixAudio && enabledIndices.length > 1) {
         final List<String> filterParts = [];
         final List<String> mixInputs = [];
+        final List<String> trackNames = [];
+        
         for (int i = 0; i < enabledIndices.length; i++) {
           final track = audioTracks[enabledIndices[i]];
           final factor = track.volumePercent / 100;
+          final originalStream = originalAudioStreams.firstWhere(
+            (s) => s.index == track.index,
+            orElse: () => AudioStreamInfo(
+              index: track.index,
+              title: track.name,
+              codec: 'unknown',
+              bitrate: 0,
+              sampleRate: 0,
+              channels: 2,
+              language: '',
+              isDefault: false,
+              isForced: false,
+            ),
+          );
+          trackNames.add(originalStream.title);
+          
           if (factor != 1.0) {
             filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
             mixInputs.add('[a$i]');
@@ -142,28 +104,52 @@ class TranscodeStrategy implements ExportStrategy {
             mixInputs.add('[0:a:${track.index}]');
           }
         }
+        
         if (filterParts.isNotEmpty) {
           audioFilters.add(filterParts.join('; '));
         }
         audioFilters.add('${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]');
         audioMaps.addAll(['-map', '[aout]']);
-        // Для смешанной дорожки даём общее название
-        args.addAll(['-metadata:s:a:0', 'title=Mixed Audio']);
-        print('Режим: объединение дорожек');
+        
+        final mixedTitle = 'Mixed: ${trackNames.join(" + ")}';
+        args.addAll(['-metadata:s:a:0', 'title=$mixedTitle']);
+        args.addAll(['-metadata:s:a:0', 'comment=Mixed from: ${trackNames.join(", ")}']);
+        print('Режим: объединение дорожек -> $mixedTitle');
       } else {
+        int outputStreamIndex = 0;
         for (int i = 0; i < enabledIndices.length; i++) {
           final track = audioTracks[enabledIndices[i]];
           final factor = track.volumePercent / 100;
+          final originalStream = originalAudioStreams.firstWhere(
+            (s) => s.index == track.index,
+            orElse: () => AudioStreamInfo(
+              index: track.index,
+              title: track.name,
+              codec: 'unknown',
+              bitrate: 0,
+              sampleRate: 0,
+              channels: 2,
+              language: '',
+              isDefault: false,
+              isForced: false,
+            ),
+          );
+          
           if (factor != 1.0) {
             audioFilters.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
             audioMaps.addAll(['-map', '[a$i]']);
           } else {
             audioMaps.addAll(['-map', '0:a:${track.index}']);
           }
-          // Сохраняем оригинальное название для выбранной дорожки
-          if (track.index < originalTrackTitles.length && originalTrackTitles[track.index].isNotEmpty) {
-            args.addAll(['-metadata:s:a:$i', 'title=${originalTrackTitles[track.index]}']);
+          
+          // Сохраняем оригинальные метаданные
+          if (originalStream.title.isNotEmpty) {
+            args.addAll(['-metadata:s:a:$outputStreamIndex', 'title=${originalStream.title}']);
           }
+          if (originalStream.language.isNotEmpty) {
+            args.addAll(['-metadata:s:a:$outputStreamIndex', 'language=${originalStream.language}']);
+          }
+          outputStreamIndex++;
         }
         print('Режим: раздельные дорожки');
       }
@@ -209,6 +195,13 @@ class TranscodeStrategy implements ExportStrategy {
     
     final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
     
+    // Получаем оригинальные аудио потоки через MediaInfoService
+    final originalAudioStreams = await MediaInfoService.getAudioStreams(inputPath);
+    print('Оригинальные аудио потоки:');
+    for (final stream in originalAudioStreams) {
+      print('  ${stream.index}: "${stream.title}" (${stream.codec})');
+    }
+    
     final int originalBitrateValue = await _getAudioBitrate(inputPath);
     final bool useCustomSettings = exportSettings != null && 
         (exportSettings.audioBitrate != (originalBitrateValue ~/ 1000) ||
@@ -247,9 +240,6 @@ class TranscodeStrategy implements ExportStrategy {
     final activeClips = clips.where((c) => c.isVisible).toList();
     final List<String> processedFiles = [];
     
-    // Получаем оригинальные названия аудиодорожек один раз
-    final originalTrackTitles = await _getAudioTrackTitles(inputPath);
-    
     print('=== ПЕРЕКОДИРОВАНИЕ ВСЕХ ФРАГМЕНТОВ ===');
     print('Всего активных фрагментов: ${activeClips.length}');
     
@@ -271,7 +261,7 @@ class TranscodeStrategy implements ExportStrategy {
         crf: crf,
         copyVideo: copyVideo,
         exportSettings: exportSettings,
-        originalTrackTitles: originalTrackTitles,
+        originalAudioStreams: originalAudioStreams,
       );
       processedFiles.add(transcoded);
       tempFiles.add(transcoded);
@@ -284,9 +274,13 @@ class TranscodeStrategy implements ExportStrategy {
     
     print('\n=== СКЛЕЙКА ФРАГМЕНТОВ ===');
     
-    // Получаем количество аудиопотоков из первого фрагмента
-    final audioStreams = await _getAudioStreamCount(processedFiles.first);
-    print('Количество аудиопотоков в фрагментах: $audioStreams');
+    // Получаем информацию о первом фрагменте
+    final firstFileInfo = await MediaInfoService.getMediaInfo(processedFiles.first);
+    final audioStreams = firstFileInfo.audioStreams;
+    print('Количество аудиопотоков в фрагментах: ${audioStreams.length}');
+    for (final stream in audioStreams) {
+      print('  Поток ${stream.index}: "${stream.title}"');
+    }
     
     // Создаём файл конкатенации
     final concatDir = await Directory.systemTemp.createTemp('sovicut_concat_final');
@@ -307,9 +301,18 @@ class TranscodeStrategy implements ExportStrategy {
     // Явно маппим видео поток
     args.addAll(['-map', '0:v:0']);
     
-    // Явно маппим ВСЕ аудио потоки
-    for (int i = 0; i < audioStreams; i++) {
+    // Явно маппим ВСЕ аудио потоки и сохраняем их метаданные
+    for (int i = 0; i < audioStreams.length; i++) {
       args.addAll(['-map', '0:a:$i']);
+      
+      // Сохраняем оригинальные названия из первого фрагмента
+      final stream = audioStreams[i];
+      if (stream.title.isNotEmpty) {
+        args.addAll(['-metadata:s:a:$i', 'title=${stream.title}']);
+      }
+      if (stream.language.isNotEmpty) {
+        args.addAll(['-metadata:s:a:$i', 'language=${stream.language}']);
+      }
     }
     
     // Копируем кодеки без перекодирования
@@ -340,27 +343,12 @@ class TranscodeStrategy implements ExportStrategy {
       return false;
     }
     
-    print('=== ЭКСПОРТ УСПЕШНО ЗАВЕРШЁН С СОХРАНЕНИЕМ $audioStreams АУДИОДОРОЖЕК ===');
-    return true;
-  }
-
-  static Future<int> _getAudioStreamCount(String videoPath) async {
-    final result = await Process.run(
-      'ffprobe',
-      [
-        '-v', 'error',
-        '-show_entries', 'stream=codec_type',
-        '-of', 'csv=p=0',
-        videoPath
-      ],
-      runInShell: true,
-    );
-    final lines = result.stdout.toString().trim().split('\n');
-    int count = 0;
-    for (final line in lines) {
-      if (line.contains('audio')) count++;
+    print('=== ЭКСПОРТ УСПЕШНО ЗАВЕРШЁН ===');
+    print('=== СОХРАНЕНО АУДИО ПОТОКОВ: ${audioStreams.length} ===');
+    for (final stream in audioStreams) {
+      print('  - "${stream.title}" (${stream.codec})');
     }
-    return count;
+    return true;
   }
 
   static Future<int> _getAudioBitrate(String videoPath) async {

@@ -3,61 +3,50 @@ import 'audio_track.dart';
 import 'clip.dart';
 import 'export_settings_tab.dart';
 import 'ffmpeg_utils.dart';
+import 'media_info_service.dart';
 
 class FFmpegService {
   static Future<List<AudioTrack>> analyzeAudio(String videoPath) async {
-    final probeResult = await Process.run(
-      'ffprobe',
-      [
-        '-v', 'error',
-        '-show_entries', 'stream=index,codec_type',
-        '-of', 'csv=p=0',
-        videoPath
-      ],
-      runInShell: true,
-    );
-    final lines = probeResult.stdout.toString().trim().split('\n');
-    final List<int> audioRealIndexes = [];
-    
-    for (final line in lines) {
-      final parts = line.split(',');
-      if (parts.length >= 2 && parts[1].trim() == 'audio') {
-        final index = int.tryParse(parts[0].trim());
-        if (index != null) audioRealIndexes.add(index);
-      }
-    }
-    
-    final List<AudioTrack> tracks = [];
-    for (int i = 0; i < audioRealIndexes.length; i++) {
-      double originalVolume = -100;
-      try {
-        final volumeResult = await Process.run(
-          'ffmpeg',
-          [
-            '-i', videoPath,
-            '-map', '0:a:${audioRealIndexes[i]}',
-            '-af', 'volumedetect',
-            '-f', 'null',
-            'NUL'
-          ],
-          runInShell: true,
-        );
-        final match = RegExp(r'mean_volume:\s*(-?\d+(?:\.\d+)?)')
-            .firstMatch(volumeResult.stderr.toString());
-        if (match != null) {
-          originalVolume = double.parse(match.group(1)!);
-        }
-      } catch (e) {}
+    try {
+      final audioStreams = await MediaInfoService.getAudioStreams(videoPath);
       
-      tracks.add(AudioTrack(
-        index: audioRealIndexes[i],
-        name: 'Дорожка ${i + 1}',
-        isEnabled: true,
-        volumePercent: 100,
-        originalVolume: originalVolume,
-      ));
+      final List<AudioTrack> tracks = [];
+      for (final stream in audioStreams) {
+        double originalVolume = -100;
+        try {
+          final volumeResult = await Process.run(
+            'ffmpeg',
+            [
+              '-i', videoPath,
+              '-map', '0:a:${stream.index}',
+              '-af', 'volumedetect',
+              '-f', 'null',
+              'NUL'
+            ],
+            runInShell: true,
+          );
+          final match = RegExp(r'mean_volume:\s*(-?\d+(?:\.\d+)?)')
+              .firstMatch(volumeResult.stderr.toString());
+          if (match != null) {
+            originalVolume = double.parse(match.group(1)!);
+          }
+        } catch (e) {
+          print('Ошибка получения громкости для дорожки ${stream.index}: $e');
+        }
+        
+        tracks.add(AudioTrack(
+          index: stream.index,
+          name: stream.title,
+          isEnabled: true,
+          volumePercent: 100,
+          originalVolume: originalVolume,
+        ));
+      }
+      return tracks;
+    } catch (e) {
+      print('Ошибка analyzeAudio: $e');
+      return [];
     }
-    return tracks;
   }
 
   static Future<int> _getAudioBitrate(String videoPath) async {
@@ -119,11 +108,18 @@ class FFmpegService {
     final bool needConcat = hasClips && clips!.any((c) => !c.isVisible) || (hasClips && clips.length > 1);
     final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
     
-    // Получаем РЕАЛЬНЫЕ индексы всех потоков
+    // Получаем РЕАЛЬНЫЕ индексы всех потоков через FFmpegUtils
     final streamIndices = await FFmpegUtils.getStreamIndices(inputPath);
     final List<int> videoIndices = streamIndices['video']!;
     final List<int> audioIndices = streamIndices['audio']!;
     final int audioCount = audioIndices.length;
+    
+    // Получаем оригинальные названия аудиодорожек через MediaInfoService
+    final originalAudioStreams = await MediaInfoService.getAudioStreams(inputPath);
+    print('=== ОРИГИНАЛЬНЫЕ АУДИОДОРОЖКИ ===');
+    for (final stream in originalAudioStreams) {
+      print('  ${stream.index}: "${stream.title}" (${stream.codec})');
+    }
     
     print('=== ИНДЕКСЫ ПОТОКОВ ===');
     print('Видео: $videoIndices');
@@ -183,15 +179,36 @@ class FFmpegService {
         tempArgs.addAll(['-t', clip.duration.toStringAsFixed(6)]);
         
         if (!needAudioReencode) {
-          // Копируем ВСЕ потоки без изменений (убираем metadata)
+          // Копируем ВСЕ потоки без изменений
           for (final idx in videoIndices) {
             tempArgs.addAll(['-map', '0:v:$idx']);
           }
-          for (final idx in audioIndices) {
+          for (int idx = 0; idx < audioCount; idx++) {
             tempArgs.addAll(['-map', '0:a:$idx']);
+            // Сохраняем оригинальные названия
+            final originalStream = originalAudioStreams.firstWhere(
+              (s) => s.index == idx,
+              orElse: () => AudioStreamInfo(
+                index: idx,
+                title: 'Дорожка ${idx + 1}',
+                codec: 'unknown',
+                bitrate: 0,
+                sampleRate: 0,
+                channels: 2,
+                language: '',
+                isDefault: false,
+                isForced: false,
+              ),
+            );
+            if (originalStream.title.isNotEmpty) {
+              tempArgs.addAll(['-metadata:s:a:$idx', 'title=${originalStream.title}']);
+            }
+            if (originalStream.language.isNotEmpty) {
+              tempArgs.addAll(['-metadata:s:a:$idx', 'language=${originalStream.language}']);
+            }
           }
           tempArgs.addAll(['-c:v', 'copy', '-c:a', 'copy']);
-          print('Фрагмент ${i+1}: копирование всех ${audioCount} аудиопотоков');
+          print('Фрагмент ${i+1}: копирование всех $audioCount аудиопотоков с сохранением названий');
         } else {
           // С изменениями аудио
           tempArgs.addAll(['-map', '0:v:0']);
@@ -207,9 +224,27 @@ class FFmpegService {
           if (mixAudio && enabledTracks.length > 1) {
             final List<String> filterParts = [];
             final List<String> mixInputs = [];
+            final List<String> trackNames = [];
+            
             for (int j = 0; j < enabledTracks.length; j++) {
               final track = enabledTracks[j];
               final factor = track.volumePercent / 100;
+              final originalStream = originalAudioStreams.firstWhere(
+                (s) => s.index == track.index,
+                orElse: () => AudioStreamInfo(
+                  index: track.index,
+                  title: track.name,
+                  codec: 'unknown',
+                  bitrate: 0,
+                  sampleRate: 0,
+                  channels: 2,
+                  language: '',
+                  isDefault: false,
+                  isForced: false,
+                ),
+              );
+              trackNames.add(originalStream.title);
+              
               if (factor != 1.0) {
                 filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$j]');
                 mixInputs.add('[a$j]');
@@ -217,20 +252,50 @@ class FFmpegService {
                 mixInputs.add('[0:a:${track.index}]');
               }
             }
+            
             if (filterParts.isNotEmpty) {
               tempArgs.addAll(['-filter_complex', filterParts.join('; ')]);
             }
             tempArgs.addAll(['-filter_complex', '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]']);
             tempArgs.addAll(['-map', '[aout]']);
+            
+            final mixedTitle = 'Mixed: ${trackNames.join(" + ")}';
+            tempArgs.addAll(['-metadata:s:a:0', 'title=$mixedTitle']);
+            tempArgs.addAll(['-metadata:s:a:0', 'comment=Mixed from: ${trackNames.join(", ")}']);
           } else {
+            int outputIndex = 0;
             for (final track in enabledTracks) {
               final factor = track.volumePercent / 100;
+              final originalStream = originalAudioStreams.firstWhere(
+                (s) => s.index == track.index,
+                orElse: () => AudioStreamInfo(
+                  index: track.index,
+                  title: track.name,
+                  codec: 'unknown',
+                  bitrate: 0,
+                  sampleRate: 0,
+                  channels: 2,
+                  language: '',
+                  isDefault: false,
+                  isForced: false,
+                ),
+              );
+              
               if (factor != 1.0) {
                 tempArgs.addAll(['-filter_complex', '[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a${track.index}]']);
                 tempArgs.addAll(['-map', '[a${track.index}]']);
               } else {
                 tempArgs.addAll(['-map', '0:a:${track.index}']);
               }
+              
+              // Сохраняем оригинальное название
+              if (originalStream.title.isNotEmpty) {
+                tempArgs.addAll(['-metadata:s:a:$outputIndex', 'title=${originalStream.title}']);
+              }
+              if (originalStream.language.isNotEmpty) {
+                tempArgs.addAll(['-metadata:s:a:$outputIndex', 'language=${originalStream.language}']);
+              }
+              outputIndex++;
             }
           }
           tempArgs.addAll(['-c:a', targetAudioCodec, '-b:a', '${targetAudioBitrate}k']);
@@ -263,18 +328,33 @@ class FFmpegService {
       }
       await concatFile.writeAsString(content.toString());
       
+      args.clear();
       args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
       
-      // !!! КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ !!!
+      // Получаем количество аудиопотоков из первого временного файла
+      final firstFileInfo = await MediaInfoService.getMediaInfo(tempFiles.first);
+      final audioStreamsCount = firstFileInfo.audioStreams.length;
+      
       // Явно маппим ВСЕ аудиодорожки из КАЖДОГО временного файла
       for (int i = 0; i < tempFiles.length; i++) {
-        for (int j = 0; j < audioCount; j++) {
+        for (int j = 0; j < audioStreamsCount; j++) {
           args.addAll(['-map', '${i}:a:$j']);
         }
       }
       // Маппим видео из первого файла
       args.addAll(['-map', '0:v:0']);
       args.addAll(['-c:v', 'copy', '-c:a', 'copy']);
+      
+      // Сохраняем метаданные из первого фрагмента
+      for (int j = 0; j < firstFileInfo.audioStreams.length; j++) {
+        final stream = firstFileInfo.audioStreams[j];
+        if (stream.title.isNotEmpty) {
+          args.addAll(['-metadata:s:a:$j', 'title=${stream.title}']);
+        }
+        if (stream.language.isNotEmpty) {
+          args.addAll(['-metadata:s:a:$j', 'language=${stream.language}']);
+        }
+      }
       
       if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
         args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
@@ -295,6 +375,7 @@ class FFmpegService {
       }
       
       print('=== ЭКСПОРТ УСПЕШНО ЗАВЕРШЁН ===');
+      print('=== СОХРАНЕНО АУДИО ПОТОКОВ: $audioStreamsCount ===');
       return true;
       
     } else {
@@ -330,11 +411,32 @@ class FFmpegService {
         for (final idx in videoIndices) {
           args.addAll(['-map', '0:v:$idx']);
         }
-        for (final idx in audioIndices) {
+        for (int idx = 0; idx < audioCount; idx++) {
           args.addAll(['-map', '0:a:$idx']);
+          // Сохраняем оригинальные названия
+          final originalStream = originalAudioStreams.firstWhere(
+            (s) => s.index == idx,
+            orElse: () => AudioStreamInfo(
+              index: idx,
+              title: 'Дорожка ${idx + 1}',
+              codec: 'unknown',
+              bitrate: 0,
+              sampleRate: 0,
+              channels: 2,
+              language: '',
+              isDefault: false,
+              isForced: false,
+            ),
+          );
+          if (originalStream.title.isNotEmpty) {
+            args.addAll(['-metadata:s:a:$idx', 'title=${originalStream.title}']);
+          }
+          if (originalStream.language.isNotEmpty) {
+            args.addAll(['-metadata:s:a:$idx', 'language=${originalStream.language}']);
+          }
         }
         args.addAll(['-c:v', 'copy', '-c:a', 'copy']);
-        print('Копирование всех $audioCount аудиопотоков');
+        print('Копирование всех $audioCount аудиопотоков с сохранением названий');
       } else {
         // С изменениями аудио
         args.addAll(['-map', '0:v:0']);
@@ -350,9 +452,27 @@ class FFmpegService {
         if (mixAudio && enabledTracks.length > 1) {
           final List<String> filterParts = [];
           final List<String> mixInputs = [];
+          final List<String> trackNames = [];
+          
           for (int j = 0; j < enabledTracks.length; j++) {
             final track = enabledTracks[j];
             final factor = track.volumePercent / 100;
+            final originalStream = originalAudioStreams.firstWhere(
+              (s) => s.index == track.index,
+              orElse: () => AudioStreamInfo(
+                index: track.index,
+                title: track.name,
+                codec: 'unknown',
+                bitrate: 0,
+                sampleRate: 0,
+                channels: 2,
+                language: '',
+                isDefault: false,
+                isForced: false,
+              ),
+            );
+            trackNames.add(originalStream.title);
+            
             if (factor != 1.0) {
               filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$j]');
               mixInputs.add('[a$j]');
@@ -360,20 +480,50 @@ class FFmpegService {
               mixInputs.add('[0:a:${track.index}]');
             }
           }
+          
           if (filterParts.isNotEmpty) {
             args.addAll(['-filter_complex', filterParts.join('; ')]);
           }
           args.addAll(['-filter_complex', '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]']);
           args.addAll(['-map', '[aout]']);
+          
+          final mixedTitle = 'Mixed: ${trackNames.join(" + ")}';
+          args.addAll(['-metadata:s:a:0', 'title=$mixedTitle']);
+          args.addAll(['-metadata:s:a:0', 'comment=Mixed from: ${trackNames.join(", ")}']);
         } else {
+          int outputIndex = 0;
           for (final track in enabledTracks) {
             final factor = track.volumePercent / 100;
+            final originalStream = originalAudioStreams.firstWhere(
+              (s) => s.index == track.index,
+              orElse: () => AudioStreamInfo(
+                index: track.index,
+                title: track.name,
+                codec: 'unknown',
+                bitrate: 0,
+                sampleRate: 0,
+                channels: 2,
+                language: '',
+                isDefault: false,
+                isForced: false,
+              ),
+            );
+            
             if (factor != 1.0) {
               args.addAll(['-filter_complex', '[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a${track.index}]']);
               args.addAll(['-map', '[a${track.index}]']);
             } else {
               args.addAll(['-map', '0:a:${track.index}']);
             }
+            
+            // Сохраняем оригинальное название
+            if (originalStream.title.isNotEmpty) {
+              args.addAll(['-metadata:s:a:$outputIndex', 'title=${originalStream.title}']);
+            }
+            if (originalStream.language.isNotEmpty) {
+              args.addAll(['-metadata:s:a:$outputIndex', 'language=${originalStream.language}']);
+            }
+            outputIndex++;
           }
         }
         args.addAll(['-c:a', targetAudioCodec, '-b:a', '${targetAudioBitrate}k']);

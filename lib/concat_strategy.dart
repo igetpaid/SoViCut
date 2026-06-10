@@ -4,6 +4,7 @@ import 'audio_track.dart';
 import 'clip.dart';
 import 'export_settings_tab.dart';
 import 'export_strategy.dart';
+import 'media_info_service.dart';
 
 class ConcatStrategy implements ExportStrategy {
   @override
@@ -65,6 +66,13 @@ class ConcatStrategy implements ExportStrategy {
     final List<String> args = [];
     
     final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
+    
+    // Получаем оригинальные аудио потоки через MediaInfoService
+    final originalAudioStreams = await MediaInfoService.getAudioStreams(inputPath);
+    print('=== ОРИГИНАЛЬНЫЕ АУДИОДОРОЖКИ (ConcatStrategy) ===');
+    for (final stream in originalAudioStreams) {
+      print('  ${stream.index}: "${stream.title}" (${stream.codec})');
+    }
     
     final int originalBitrateValue = await _getAudioBitrate(inputPath);
     final bool useCustomSettings = exportSettings != null && 
@@ -152,6 +160,8 @@ class ConcatStrategy implements ExportStrategy {
       }
     }
     
+    final audioStreamsCount = originalAudioStreams.length;
+    
     if (needAudioReencode && enabledIndices.isNotEmpty) {
       final List<String> audioFilters = [];
       final List<String> audioMaps = [];
@@ -159,9 +169,27 @@ class ConcatStrategy implements ExportStrategy {
       if (mixAudio && enabledIndices.length > 1) {
         final List<String> filterParts = [];
         final List<String> mixInputs = [];
+        final List<String> trackNames = [];
+        
         for (int i = 0; i < enabledIndices.length; i++) {
           final track = audioTracks[enabledIndices[i]];
           final factor = track.volumePercent / 100;
+          final originalStream = originalAudioStreams.firstWhere(
+            (s) => s.index == track.index,
+            orElse: () => AudioStreamInfo(
+              index: track.index,
+              title: track.name,
+              codec: 'unknown',
+              bitrate: 0,
+              sampleRate: 0,
+              channels: 2,
+              language: '',
+              isDefault: false,
+              isForced: false,
+            ),
+          );
+          trackNames.add(originalStream.title);
+          
           if (factor != 1.0) {
             filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
             mixInputs.add('[a$i]');
@@ -169,22 +197,54 @@ class ConcatStrategy implements ExportStrategy {
             mixInputs.add('[0:a:${track.index}]');
           }
         }
+        
         if (filterParts.isNotEmpty) {
           audioFilters.add(filterParts.join('; '));
         }
         audioFilters.add('${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]');
         audioMaps.addAll(['-map', '[aout]']);
+        
+        final mixedTitle = 'Mixed: ${trackNames.join(" + ")}';
+        args.addAll(['-metadata:s:a:0', 'title=$mixedTitle']);
+        args.addAll(['-metadata:s:a:0', 'comment=Mixed from: ${trackNames.join(", ")}']);
+        print('Режим: объединение дорожек -> $mixedTitle');
       } else {
+        int outputIndex = 0;
         for (int i = 0; i < enabledIndices.length; i++) {
           final track = audioTracks[enabledIndices[i]];
           final factor = track.volumePercent / 100;
+          final originalStream = originalAudioStreams.firstWhere(
+            (s) => s.index == track.index,
+            orElse: () => AudioStreamInfo(
+              index: track.index,
+              title: track.name,
+              codec: 'unknown',
+              bitrate: 0,
+              sampleRate: 0,
+              channels: 2,
+              language: '',
+              isDefault: false,
+              isForced: false,
+            ),
+          );
+          
           if (factor != 1.0) {
             audioFilters.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
             audioMaps.addAll(['-map', '[a$i]']);
           } else {
             audioMaps.addAll(['-map', '0:a:${track.index}']);
           }
+          
+          // Сохраняем оригинальное название
+          if (originalStream.title.isNotEmpty) {
+            args.addAll(['-metadata:s:a:$outputIndex', 'title=${originalStream.title}']);
+          }
+          if (originalStream.language.isNotEmpty) {
+            args.addAll(['-metadata:s:a:$outputIndex', 'language=${originalStream.language}']);
+          }
+          outputIndex++;
         }
+        print('Режим: раздельные дорожки');
       }
       
       if (audioFilters.isNotEmpty) {
@@ -198,9 +258,32 @@ class ConcatStrategy implements ExportStrategy {
       args.addAll(['-ar', targetSampleRate.toString()]);
       args.addAll(['-ac', targetChannels.toString()]);
     } else {
-      final int audioCount = await _getAudioStreamCount(inputPath);
-      for (int i = 0; i < audioCount; i++) {
+      // Копируем ВСЕ оригинальные аудиопотоки с сохранением названий
+      print('Копирование всех $audioStreamsCount аудиопотоков с сохранением названий');
+      for (int i = 0; i < audioStreamsCount; i++) {
         args.addAll(['-map', '0:a:$i']);
+        
+        final originalStream = originalAudioStreams.firstWhere(
+          (s) => s.index == i,
+          orElse: () => AudioStreamInfo(
+            index: i,
+            title: 'Дорожка ${i + 1}',
+            codec: 'unknown',
+            bitrate: 0,
+            sampleRate: 0,
+            channels: 2,
+            language: '',
+            isDefault: false,
+            isForced: false,
+          ),
+        );
+        
+        if (originalStream.title.isNotEmpty) {
+          args.addAll(['-metadata:s:a:$i', 'title=${originalStream.title}']);
+        }
+        if (originalStream.language.isNotEmpty) {
+          args.addAll(['-metadata:s:a:$i', 'language=${originalStream.language}']);
+        }
       }
       args.addAll(['-c:a', 'copy']);
     }
@@ -218,28 +301,20 @@ class ConcatStrategy implements ExportStrategy {
     if (result.exitCode != 0) {
       print('=== STDERR ===');
       print(result.stderr);
+    } else {
+      print('=== ЭКСПОРТ УСПЕШНО ЗАВЕРШЁН ===');
+      print('=== СОХРАНЕНО АУДИО ПОТОКОВ: $audioStreamsCount ===');
+      for (final stream in originalAudioStreams) {
+        print('  - "${stream.title}"');
+      }
     }
     
     return result.exitCode == 0;
   }
 
   static Future<int> _getAudioStreamCount(String videoPath) async {
-    final result = await Process.run(
-      'ffprobe',
-      [
-        '-v', 'error',
-        '-show_entries', 'stream=codec_type',
-        '-of', 'csv=p=0',
-        videoPath
-      ],
-      runInShell: true,
-    );
-    final lines = result.stdout.toString().trim().split('\n');
-    int count = 0;
-    for (final line in lines) {
-      if (line.contains('audio')) count++;
-    }
-    return count;
+    final streams = await MediaInfoService.getAudioStreams(videoPath);
+    return streams.length;
   }
 
   static Future<int> _getAudioBitrate(String videoPath) async {

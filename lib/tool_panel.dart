@@ -96,9 +96,8 @@ class ToolPanel extends StatelessWidget {
                     onRestore: onRestoreClip,
                   ),
                   ExportSettingsTab(
-                    originalAudioBitrate: originalAudioBitrate,
-                    originalSampleRate: originalSampleRate,
-                    originalChannels: originalChannels,
+                    videoPath: videoPath,
+                    audioTracks: audioTracks,
                     onSettingsChanged: onExportSettingsChanged,
                   ),
                 ],

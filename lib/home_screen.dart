@@ -164,35 +164,47 @@ class _HomeScreenState extends State<HomeScreen> {
       _isLoading = true;
     });
     
-    final tracks = await FFmpegService.analyzeAudio(path);
-    final duration = await _getVideoDuration(path);
-    final audioInfo = await _getAudioInfo(path);
-    
-    final clips = [
-      Clip(
-        id: 0,
-        sourcePath: path,
-        startTime: 0,
-        endTime: duration,
-        isVisible: true,
-      ),
-    ];
-    
-    setState(() {
-      _audioTracks = tracks;
-      _clips = clips;
-      _nextClipId = 1;
-      _originalAudioBitrate = audioInfo.bitrate;
-      _originalSampleRate = audioInfo.sampleRate;
-      _originalChannels = audioInfo.channels;
-      _exportSettings = ExportSettings.defaults(
-        originalBitrate: audioInfo.bitrate,
-        originalSampleRate: audioInfo.sampleRate,
-        originalChannels: audioInfo.channels,
+    try {
+      final tracks = await FFmpegService.analyzeAudio(path);
+      final duration = await _getVideoDuration(path);
+      final audioInfo = await _getAudioInfo(path);
+      
+      final clips = [
+        Clip(
+          id: 0,
+          sourcePath: path,
+          startTime: 0,
+          endTime: duration,
+          isVisible: true,
+        ),
+      ];
+      
+      setState(() {
+        _audioTracks = tracks;
+        _clips = clips;
+        _nextClipId = 1;
+        _originalAudioBitrate = audioInfo.bitrate;
+        _originalSampleRate = audioInfo.sampleRate;
+        _originalChannels = audioInfo.channels;
+        _exportSettings = ExportSettings.defaults(
+          originalBitrate: audioInfo.bitrate,
+          originalSampleRate: audioInfo.sampleRate,
+          originalChannels: audioInfo.channels,
+        );
+        _previewPosition = 0;
+        _isLoading = false;
+      });
+    } catch (e, stackTrace) {
+      print('Ошибка загрузки видео: $e');
+      print(stackTrace);
+      setState(() {
+        _isLoading = false;
+        _videoPath = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка загрузки видео: $e'), backgroundColor: Colors.red),
       );
-      _previewPosition = 0;
-      _isLoading = false;
-    });
+    }
   }
 
   Future<double> _getVideoDuration(String path) async {
