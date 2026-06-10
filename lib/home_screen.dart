@@ -282,6 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               _loadVideo(detail.files.first.path!);
                             }
                           },
+                          clips: _clips,  // ← добавить эту строку
                         ),
                       ),
                     ),
