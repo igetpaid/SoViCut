@@ -76,6 +76,7 @@ class FFmpegService {
     for (final line in lines) {
       if (line.contains('audio')) count++;
     }
+    print('=== _getAudioStreamCount: $count ===');
     return count;
   }
 
@@ -138,6 +139,12 @@ class FFmpegService {
     final bool needConcat = hasClips && clips!.any((c) => !c.isVisible) || (hasClips && clips.length > 1);
     final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
     
+    print('=== exportVideo ===');
+    print('needConcat: $needConcat');
+    print('needAudioReencode: $needAudioReencode');
+    print('audioTracks.length: ${audioTracks.length}');
+    print('mixAudio: $mixAudio');
+    
     final int originalBitrateValue = await _getAudioBitrate(inputPath);
     final bool useCustomSettings = exportSettings != null && 
         (exportSettings.audioBitrate != (originalBitrateValue ~/ 1000) ||
@@ -176,18 +183,23 @@ class FFmpegService {
     final List<String> tempFiles = [];
     
     if (needConcat) {
+      print('=== РЕЖИМ CONCAT ===');
       for (int i = 0; i < clips!.length; i++) {
         final clip = clips[i];
         if (!clip.isVisible) continue;
+        
+        print('Обработка фрагмента $i: start=${clip.startTime}, end=${clip.endTime}');
         
         final tempPath = '${Directory.systemTemp.path}\\sovicut_temp_${DateTime.now().millisecondsSinceEpoch}_$i.mp4';
         tempFiles.add(tempPath);
         
         final List<String> tempArgs = [];
-        tempArgs.addAll(['-i', inputPath]);
         tempArgs.addAll(['-ss', clip.startTime.toStringAsFixed(6)]);
         tempArgs.addAll(['-t', clip.duration.toStringAsFixed(6)]);
+        tempArgs.addAll(['-i', inputPath]);
         tempArgs.addAll(['-map', '0:v:0']);
+        tempArgs.addAll(['-copyts']);
+        tempArgs.addAll(['-avoid_negative_ts', 'make_zero']);
         
         if (copyVideo) {
           tempArgs.addAll(['-c:v', 'copy']);
@@ -203,6 +215,7 @@ class FFmpegService {
         }
         
         if (needAudioReencode && enabledIndices.isNotEmpty) {
+          print('Перекодирование аудио для фрагмента $i');
           final List<String> audioFilters = [];
           final List<String> audioMaps = [];
           
@@ -249,16 +262,21 @@ class FFmpegService {
           tempArgs.addAll(['-ac', targetChannels.toString()]);
         } else {
           final int audioCount = await _getAudioStreamCount(inputPath);
+          print('Копирование аудио (без перекодирования) для фрагмента $i, дорожек: $audioCount');
           for (int j = 0; j < audioCount; j++) {
             tempArgs.addAll(['-map', '0:a:$j']);
+            print('  маппим 0:a:$j');
           }
           tempArgs.addAll(['-c:a', 'copy']);
         }
         
         tempArgs.addAll(['-y', tempPath]);
         
+        print('Временная команда для фрагмента $i: ffmpeg ${tempArgs.join(' ')}');
+        
         final tempResult = await Process.run('ffmpeg', tempArgs, runInShell: true);
         if (tempResult.exitCode != 0) {
+          print('ОШИБКА при создании фрагмента $i: ${tempResult.stderr}');
           for (final f in tempFiles) {
             try { await File(f).delete(); } catch (_) {}
           }
@@ -267,6 +285,7 @@ class FFmpegService {
       }
       
       if (tempFiles.isEmpty) {
+        print('Нет активных фрагментов');
         return false;
       }
       
@@ -280,13 +299,25 @@ class FFmpegService {
       await concatFile.writeAsString(content.toString());
       
       args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
-      args.addAll(['-c', 'copy']);
+      
+      args.addAll(['-map', '0:v:0']);
+      final int audioCount = await _getAudioStreamCount(tempFiles.first);
+      print('Финальный concat: копируем аудиодорожек: $audioCount');
+      for (int j = 0; j < audioCount; j++) {
+        args.addAll(['-map', '0:a:$j']);
+        print('  маппим 0:a:$j');
+      }
+      args.addAll(['-c:v', 'copy']);
+      args.addAll(['-c:a', 'copy']);
       
       if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
         args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
       }
       
       args.addAll(['-y', outputPath]);
+      
+      print('=== ФИНАЛЬНАЯ КОМАНДА CONCAT ===');
+      print('ffmpeg ${args.join(' ')}');
       
       final result = await Process.run('ffmpeg', args, runInShell: true);
       
@@ -295,8 +326,11 @@ class FFmpegService {
       }
       try { await concatDir.delete(recursive: true); } catch (_) {}
       
+      print('Результат concat: exitCode=${result.exitCode}');
       return result.exitCode == 0;
     } else {
+      print('=== ОБЫЧНЫЙ РЕЖИМ (без concat) ===');
+      
       if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
         args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
       }
@@ -330,6 +364,7 @@ class FFmpegService {
       }
       
       if (needAudioReencode && enabledIndices.isNotEmpty) {
+        print('Перекодирование аудио (обычный режим)');
         final List<String> audioFilters = [];
         final List<String> audioMaps = [];
         
@@ -376,8 +411,10 @@ class FFmpegService {
         args.addAll(['-ac', targetChannels.toString()]);
       } else {
         final int audioCount = await _getAudioStreamCount(inputPath);
+        print('Копирование аудио (без перекодирования), дорожек: $audioCount');
         for (int i = 0; i < audioCount; i++) {
           args.addAll(['-map', '0:a:$i']);
+          print('  маппим 0:a:$i');
         }
       }
       
@@ -389,7 +426,14 @@ class FFmpegService {
       }
       args.addAll(['-y', outputPath]);
       
+      print('=== ФИНАЛЬНАЯ КОМАНДА ===');
+      print('ffmpeg ${args.join(' ')}');
+      
       final result = await Process.run('ffmpeg', args, runInShell: true);
+      print('Результат: exitCode=${result.exitCode}');
+      if (result.exitCode != 0) {
+        print('STDERR: ${result.stderr}');
+      }
       return result.exitCode == 0;
     }
   }
