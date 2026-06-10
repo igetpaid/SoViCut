@@ -8,6 +8,7 @@ class TimelineWidget extends StatefulWidget {
   final Function(int) onRestore;
   final Function(int, double) onSelectClip;
   final Function(double) onCursorMoved;
+  final double externalCursorPosition;
   
   const TimelineWidget({
     super.key,
@@ -17,6 +18,7 @@ class TimelineWidget extends StatefulWidget {
     required this.onRestore,
     required this.onSelectClip,
     required this.onCursorMoved,
+    required this.externalCursorPosition,
   });
 
   @override
@@ -30,6 +32,22 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   
   double get totalDuration {
     return widget.clips.fold(0.0, (sum, clip) => sum + clip.duration);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _cursorPosition = widget.externalCursorPosition;
+  }
+
+  @override
+  void didUpdateWidget(TimelineWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.externalCursorPosition != oldWidget.externalCursorPosition) {
+      setState(() {
+        _cursorPosition = widget.externalCursorPosition;
+      });
+    }
   }
   
   String formatDuration(double seconds) {

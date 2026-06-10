@@ -13,6 +13,8 @@ class PreviewArea extends StatefulWidget {
   final Function() onDragExited;
   final VoidCallback onTap;
   final List<Clip> clips;
+  final double cursorPosition;
+  final Function(double) onPositionChanged;
   
   const PreviewArea({
     super.key,
@@ -23,6 +25,8 @@ class PreviewArea extends StatefulWidget {
     required this.onDragExited,
     required this.onTap,
     required this.clips,
+    required this.cursorPosition,
+    required this.onPositionChanged,
   });
 
   @override
@@ -34,107 +38,140 @@ class _PreviewAreaState extends State<PreviewArea> {
   ChewieController? _chewieController;
   bool _isInitializing = false;
   String _errorMessage = '';
+  bool _isSeeking = false;
+  double _currentPlaybackPosition = 0;
+
+  double get _totalDuration {
+    double total = 0;
+    for (final clip in widget.clips) {
+      if (clip.isVisible) {
+        total += clip.duration;
+      }
+    }
+    return total;
+  }
+
+  double _mapTimelineToOriginal(double timelinePosition) {
+    if (_totalDuration <= 0) return 0;
+    final targetTime = timelinePosition * _totalDuration;
+    double accumulated = 0;
+    for (final clip in widget.clips) {
+      if (!clip.isVisible) continue;
+      if (targetTime <= accumulated + clip.duration) {
+        return clip.startTime + (targetTime - accumulated);
+      }
+      accumulated += clip.duration;
+    }
+    return 0;
+  }
+
+  double _mapOriginalToTimeline(double originalSeconds) {
+    double accumulated = 0;
+    for (final clip in widget.clips) {
+      if (!clip.isVisible) continue;
+      if (originalSeconds >= clip.startTime && originalSeconds <= clip.endTime) {
+        final timelineSeconds = accumulated + (originalSeconds - clip.startTime);
+        return timelineSeconds / _totalDuration;
+      }
+      accumulated += clip.duration;
+    }
+    return 0;
+  }
 
   @override
   void didUpdateWidget(PreviewArea oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.videoPath != oldWidget.videoPath) {
-      print('=== PreviewArea: videoPath изменился ===');
       _initializePlayer();
+    } else if (widget.clips != oldWidget.clips) {
+      _initializePlayer();
+    } else if (widget.cursorPosition != oldWidget.cursorPosition && !_isSeeking) {
+      _seekToTimelinePosition(widget.cursorPosition);
     }
   }
 
   @override
   void dispose() {
-    print('=== PreviewArea: dispose ===');
     _controller?.dispose();
     _chewieController?.dispose();
     super.dispose();
   }
 
+  Future<void> _seekToTimelinePosition(double timelinePosition) async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    final originalSeconds = _mapTimelineToOriginal(timelinePosition);
+    _isSeeking = true;
+    await _controller!.seekTo(Duration(milliseconds: (originalSeconds * 1000).toInt()));
+    _isSeeking = false;
+  }
+
   Future<void> _initializePlayer() async {
-    print('=== PreviewArea: _initializePlayer START ===');
-    print('  videoPath: ${widget.videoPath}');
-    print('  clips count: ${widget.clips.length}');
-    
-    if (widget.videoPath == null) {
-      print('  videoPath = null, выходим');
-      return;
-    }
-    
-    // Проверяем существование файла
-    final file = File(widget.videoPath!);
-    if (!await file.exists()) {
-      print('  ОШИБКА: файл не существует!');
-      setState(() {
-        _errorMessage = 'Файл не найден: ${widget.videoPath}';
-        _isInitializing = false;
-      });
-      return;
-    }
-    print('  файл существует, размер: ${await file.length()} байт');
+    if (widget.videoPath == null) return;
     
     _isInitializing = true;
     _errorMessage = '';
     setState(() {});
 
     if (_controller != null) {
-      print('  disposing old controller');
       _controller!.dispose();
     }
     if (_chewieController != null) {
-      print('  disposing old chewie controller');
       _chewieController!.dispose();
     }
 
-    print('  создаём VideoPlayerController...');
-    _controller = VideoPlayerController.file(file);
-    
-    print('  вызываем initialize...');
-    try {
-      await _controller!.initialize();
-      print('  initialize УСПЕШНО завершён');
-      print('  duration: ${_controller!.value.duration}');
-      print('  aspectRatio: ${_controller!.value.aspectRatio}');
-    } catch (e, stackTrace) {
-      print('  ОШИБКА initialize: $e');
-      print('  stackTrace: $stackTrace');
+    final file = File(widget.videoPath!);
+    if (!await file.exists()) {
       setState(() {
-        _errorMessage = 'Ошибка загрузки видео: $e';
+        _errorMessage = 'Файл не найден';
         _isInitializing = false;
       });
       return;
     }
 
-    print('  создаём ChewieController...');
+    _controller = VideoPlayerController.file(file);
+    
     try {
-      _chewieController = ChewieController(
-        videoPlayerController: _controller!,
-        autoPlay: false,
-        looping: false,
-        showControls: true,
-        materialProgressColors: ChewieProgressColors(
-          playedColor: Colors.orange,
-          handleColor: Colors.orange,
-          backgroundColor: Colors.grey,
-          bufferedColor: Colors.grey[700]!,
-        ),
-        showControlsOnInitialize: true,
-      );
-      print('  ChewieController создан успешно');
-    } catch (e, stackTrace) {
-      print('  ОШИБКА создания ChewieController: $e');
-      print('  stackTrace: $stackTrace');
+      await _controller!.initialize();
+    } catch (e) {
       setState(() {
-        _errorMessage = 'Ошибка создания плеера: $e';
+        _errorMessage = 'Ошибка загрузки: $e';
         _isInitializing = false;
       });
       return;
     }
+
+    _controller!.addListener(() {
+      if (!mounted) return;
+      if (_isSeeking) return;
+      
+      final currentOriginal = _controller!.value.position.inMilliseconds / 1000;
+      final newTimelinePosition = _mapOriginalToTimeline(currentOriginal);
+      if (newTimelinePosition != _currentPlaybackPosition) {
+        _currentPlaybackPosition = newTimelinePosition;
+        widget.onPositionChanged(newTimelinePosition);
+      }
+    });
+
+    _chewieController = ChewieController(
+      videoPlayerController: _controller!,
+      autoPlay: false,
+      looping: false,
+      showControls: true,
+      materialProgressColors: ChewieProgressColors(
+        playedColor: Colors.orange,
+        handleColor: Colors.orange,
+        backgroundColor: Colors.grey,
+        bufferedColor: Colors.grey[700]!,
+      ),
+      showControlsOnInitialize: true,
+    );
 
     _isInitializing = false;
     setState(() {});
-    print('=== PreviewArea: _initializePlayer SUCCESS ===');
+    
+    if (widget.cursorPosition > 0) {
+      _seekToTimelinePosition(widget.cursorPosition);
+    }
   }
 
   @override

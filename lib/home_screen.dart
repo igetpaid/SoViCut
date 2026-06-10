@@ -42,6 +42,25 @@ class _HomeScreenState extends State<HomeScreen> {
     originalSampleRate: 48000,
     originalChannels: 2,
   );
+  
+  double _previewPosition = 0;
+
+  double _getTotalDuration() {
+    double total = 0;
+    for (final clip in _clips) {
+      if (clip.isVisible) {
+        total += clip.duration;
+      }
+    }
+    return total;
+  }
+
+  void _onPreviewPositionChanged(double position) {
+    setState(() {
+      _previewPosition = position;
+    });
+    _moveCursor(position * _getTotalDuration());
+  }
 
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.video);
@@ -82,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
         originalSampleRate: audioInfo.sampleRate,
         originalChannels: audioInfo.channels,
       );
+      _previewPosition = 0;
       _isLoading = false;
     });
   }
@@ -282,7 +302,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               _loadVideo(detail.files.first.path!);
                             }
                           },
-                          clips: _clips,  // ← добавить эту строку
+                          clips: _clips,
+                          cursorPosition: _previewPosition,
+                          onPositionChanged: _onPreviewPositionChanged,
                         ),
                       ),
                     ),
@@ -330,6 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onRestore: _restoreClip,
               onSelectClip: _selectClip,
               onCursorMoved: _moveCursor,
+              externalCursorPosition: _previewPosition,
             ),
             Container(
               decoration: BoxDecoration(
