@@ -138,7 +138,6 @@ class FFmpegService {
     final bool needConcat = hasClips && clips!.any((c) => !c.isVisible) || (hasClips && clips.length > 1);
     final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
     
-    // Определяем настройки (пользовательские или из исходника)
     final int originalBitrateValue = await _getAudioBitrate(inputPath);
     final bool useCustomSettings = exportSettings != null && 
         (exportSettings.audioBitrate != (originalBitrateValue ~/ 1000) ||
@@ -173,11 +172,6 @@ class FFmpegService {
       crf = 23;
       copyVideo = true;
     }
-    
-    print('=== needConcat: $needConcat, needAudioReencode: $needAudioReencode ===');
-    print('=== useCustomSettings: $useCustomSettings ===');
-    print('=== targetAudioBitrate: $targetAudioBitrate kbps ===');
-    print('=== copyVideo: $copyVideo, videoCodec: $videoCodec ===');
     
     final List<String> tempFiles = [];
     
@@ -263,12 +257,8 @@ class FFmpegService {
         
         tempArgs.addAll(['-y', tempPath]);
         
-        print('=== ОБРЕЗКА ФРАГМЕНТА $i ===');
-        print('ffmpeg ${tempArgs.join(' ')}');
-        
         final tempResult = await Process.run('ffmpeg', tempArgs, runInShell: true);
         if (tempResult.exitCode != 0) {
-          print('Ошибка обрезки фрагмента $i: ${tempResult.stderr}');
           for (final f in tempFiles) {
             try { await File(f).delete(); } catch (_) {}
           }
@@ -277,7 +267,6 @@ class FFmpegService {
       }
       
       if (tempFiles.isEmpty) {
-        print('Нет активных фрагментов для экспорта');
         return false;
       }
       
@@ -299,9 +288,6 @@ class FFmpegService {
       
       args.addAll(['-y', outputPath]);
       
-      print('=== СКЛЕЙКА ФРАГМЕНТОВ ===');
-      print('ffmpeg ${args.join(' ')}');
-      
       final result = await Process.run('ffmpeg', args, runInShell: true);
       
       for (final f in tempFiles) {
@@ -309,13 +295,7 @@ class FFmpegService {
       }
       try { await concatDir.delete(recursive: true); } catch (_) {}
       
-      if (result.exitCode != 0) {
-        print('Ошибка склейки: ${result.stderr}');
-        return false;
-      }
-      
-      print('=== EXIT CODE: ${result.exitCode} ===');
-      return true;
+      return result.exitCode == 0;
     } else {
       if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
         args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
@@ -409,16 +389,7 @@ class FFmpegService {
       }
       args.addAll(['-y', outputPath]);
       
-      print('=== FFmpeg команда ===');
-      print('ffmpeg ${args.join(' ')}');
-      print('=======================');
-      
       final result = await Process.run('ffmpeg', args, runInShell: true);
-      print('=== EXIT CODE: ${result.exitCode} ===');
-      if (result.exitCode != 0) {
-        print('=== STDERR ===');
-        print(result.stderr);
-      }
       return result.exitCode == 0;
     }
   }

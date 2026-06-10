@@ -1,4 +1,4 @@
 git add .
-git commit -m "Bugfix"
+git commit -m "Player sync"
 git push
 pause

@@ -59,7 +59,15 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _previewPosition = position;
     });
-    _moveCursor(position * _getTotalDuration());
+  }
+
+  void _onTimelineCursorMoved(double timeInSeconds) {
+    final totalDur = _getTotalDuration();
+    if (totalDur > 0) {
+      setState(() {
+        _previewPosition = timeInSeconds / totalDur;
+      });
+    }
   }
 
   Future<void> _pickVideo() async {
@@ -205,8 +213,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _selectClip(int clipIndex, double cursorInClip) {}
 
-  void _moveCursor(double timeInSeconds) {}
-
   Future<String> _getUniqueFilePath(String directory, String baseName) async {
     final editedName = '${baseName}_edited.mp4';
     String candidatePath = '$directory\\$editedName';
@@ -351,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onDelete: _deleteClip,
               onRestore: _restoreClip,
               onSelectClip: _selectClip,
-              onCursorMoved: _moveCursor,
+              onCursorMoved: _onTimelineCursorMoved,
               externalCursorPosition: _previewPosition,
             ),
             Container(
