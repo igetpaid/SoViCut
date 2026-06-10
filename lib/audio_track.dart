@@ -1,7 +1,7 @@
 import 'dart:math';
 
 class AudioTrack {
-  final int index;  // реальный индекс потока в видео (нужен только для информации)
+  final int index;
   final String name;
   bool isEnabled;
   double volumePercent;

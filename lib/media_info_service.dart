@@ -5,7 +5,7 @@ class AudioStreamInfo {
   final int index;
   final String title;
   final String codec;
-  final int bitrate; // в kbps
+  final int bitrate;
   final int sampleRate;
   final int channels;
   final String language;
@@ -127,7 +127,6 @@ class MediaInfo {
 }
 
 class MediaInfoService {
-  /// Получает полную информацию о медиафайле
   static Future<MediaInfo> getMediaInfo(String path) async {
     final container = await _getContainerInfo(path);
     final videoStreams = await _getVideoStreams(path);
@@ -140,7 +139,6 @@ class MediaInfoService {
     );
   }
   
-  /// Получает информацию о контейнере
   static Future<ContainerInfo> _getContainerInfo(String path) async {
     final result = await Process.run(
       'ffprobe',
@@ -164,7 +162,6 @@ class MediaInfoService {
     );
   }
   
-  /// Получает информацию о видео потоках
   static Future<List<VideoStreamInfo>> _getVideoStreams(String path) async {
     final result = await Process.run(
       'ffprobe',
@@ -205,7 +202,6 @@ class MediaInfoService {
     return streams;
   }
   
-  /// Получает информацию о аудио потоках (ПРАВИЛЬНЫЙ ПАРСИНГ)
   static Future<List<AudioStreamInfo>> _getAudioStreams(String path) async {
     final result = await Process.run(
       'ffprobe',
@@ -224,34 +220,23 @@ class MediaInfoService {
     final streamsJson = json['streams'] as List? ?? [];
     
     for (final stream in streamsJson) {
-      // Извлекаем теги
       final tags = stream['tags'] as Map? ?? {};
       final disposition = stream['disposition'] as Map? ?? {};
       
       String title = tags['title']?.toString() ?? '';
-      
-      // Если title пустой, пробуем другие варианты
       if (title.isEmpty) {
         title = tags['TAG:title']?.toString() ?? '';
       }
-      if (title.isEmpty) {
-        title = 'Дорожка ${(_parseInt(stream['index']) + 1)}';
-      }
       
       final index = _parseInt(stream['index']);
-      final sampleRate = _parseInt(stream['sample_rate']);
-      final channels = _parseInt(stream['channels']);
-      final bitrate = _parseInt(stream['bit_rate']) ~/ 1000;
-      
-      print('DEBUG: stream $index - title="$title", sampleRate=$sampleRate, channels=$channels, bitrate=$bitrate');
       
       streams.add(AudioStreamInfo(
         index: index,
         title: title,
         codec: stream['codec_name']?.toString() ?? 'unknown',
-        bitrate: bitrate,
-        sampleRate: sampleRate,
-        channels: channels,
+        bitrate: _parseInt(stream['bit_rate']) ~/ 1000,
+        sampleRate: _parseInt(stream['sample_rate']),
+        channels: _parseInt(stream['channels']),
         language: tags['language']?.toString() ?? '',
         isDefault: (_parseInt(disposition['default']) == 1),
         isForced: (_parseInt(disposition['forced']) == 1),
@@ -261,7 +246,6 @@ class MediaInfoService {
     return streams;
   }
   
-  /// Безопасный парсинг int из dynamic
   static int _parseInt(dynamic value) {
     if (value == null) return 0;
     if (value is int) return value;
@@ -270,7 +254,6 @@ class MediaInfoService {
     return 0;
   }
   
-  /// Безопасный парсинг double из dynamic
   static double _parseDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is double) return value;
@@ -279,12 +262,10 @@ class MediaInfoService {
     return 0.0;
   }
   
-  /// Быстрое получение только аудио потоков
   static Future<List<AudioStreamInfo>> getAudioStreams(String path) async {
     return _getAudioStreams(path);
   }
   
-  /// Получение количества аудио потоков
   static Future<int> getAudioStreamCount(String path) async {
     final streams = await _getAudioStreams(path);
     return streams.length;

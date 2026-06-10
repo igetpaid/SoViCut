@@ -21,6 +21,7 @@ class ExportSettings {
   final bool preserveAllAudioStreams;
   final List<int> enabledAudioStreams;
   final bool mixToSingleTrack;
+  final Map<int, String> originalTrackTitles;
   
   const ExportSettings({
     required this.audioCodec,
@@ -35,6 +36,7 @@ class ExportSettings {
     this.preserveAllAudioStreams = true,
     this.enabledAudioStreams = const [],
     this.mixToSingleTrack = false,
+    this.originalTrackTitles = const {},
   });
   
   factory ExportSettings.defaults({
@@ -55,6 +57,7 @@ class ExportSettings {
       preserveAllAudioStreams: true,
       enabledAudioStreams: const [],
       mixToSingleTrack: false,
+      originalTrackTitles: const {},
     );
   }
   
@@ -87,6 +90,7 @@ class ExportSettings {
     bool? preserveAllAudioStreams,
     List<int>? enabledAudioStreams,
     bool? mixToSingleTrack,
+    Map<int, String>? originalTrackTitles,
   }) {
     return ExportSettings(
       audioCodec: audioCodec ?? this.audioCodec,
@@ -101,6 +105,7 @@ class ExportSettings {
       preserveAllAudioStreams: preserveAllAudioStreams ?? this.preserveAllAudioStreams,
       enabledAudioStreams: enabledAudioStreams ?? this.enabledAudioStreams,
       mixToSingleTrack: mixToSingleTrack ?? this.mixToSingleTrack,
+      originalTrackTitles: originalTrackTitles ?? this.originalTrackTitles,
     );
   }
 }
@@ -153,6 +158,15 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
     try {
       _mediaInfo = await MediaInfoService.getMediaInfo(widget.videoPath!);
       
+      final Map<int, String> originalTitles = {};
+      for (final stream in _mediaInfo!.audioStreams) {
+        originalTitles[stream.index] = stream.title;
+      }
+      
+      _settings = _settings.copyWith(
+        originalTrackTitles: originalTitles,
+      );
+      
       if (_mediaInfo!.audioStreams.isNotEmpty) {
         final firstAudio = _mediaInfo!.audioStreams.first;
         _settings = _settings.copyWith(
@@ -163,6 +177,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       }
       
       _calculateEstimatedSize();
+      _notifyChanged();
     } catch (e) {
       _error = 'Ошибка: $e';
     } finally {
