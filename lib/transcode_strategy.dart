@@ -283,6 +283,12 @@ class TranscodeStrategy implements ExportStrategy {
     }
     
     print('\n=== СКЛЕЙКА ФРАГМЕНТОВ ===');
+    
+    // Получаем количество аудиопотоков из первого фрагмента
+    final audioStreams = await _getAudioStreamCount(processedFiles.first);
+    print('Количество аудиопотоков в фрагментах: $audioStreams');
+    
+    // Создаём файл конкатенации
     final concatDir = await Directory.systemTemp.createTemp('sovicut_concat_final');
     final concatPath = '${concatDir.path}\\concat.txt';
     final concatFile = File(concatPath);
@@ -292,9 +298,25 @@ class TranscodeStrategy implements ExportStrategy {
     }
     await concatFile.writeAsString(content.toString());
     
-    args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
-    args.addAll(['-c', 'copy']);
+    // Очищаем аргументы и строим новую команду
+    args.clear();
     
+    // Используем concat demuxer
+    args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
+    
+    // Явно маппим видео поток
+    args.addAll(['-map', '0:v:0']);
+    
+    // Явно маппим ВСЕ аудио потоки
+    for (int i = 0; i < audioStreams; i++) {
+      args.addAll(['-map', '0:a:$i']);
+    }
+    
+    // Копируем кодеки без перекодирования
+    args.addAll(['-c:v', 'copy']);
+    args.addAll(['-c:a', 'copy']);
+    
+    // Применяем обрезку если нужно
     if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
       args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
     }
@@ -305,6 +327,7 @@ class TranscodeStrategy implements ExportStrategy {
     
     final result = await Process.run('ffmpeg', args, runInShell: true);
     
+    // Очистка временных файлов
     for (final f in tempFiles) {
       try { await File(f).delete(); } catch (_) {}
     }
@@ -317,6 +340,7 @@ class TranscodeStrategy implements ExportStrategy {
       return false;
     }
     
+    print('=== ЭКСПОРТ УСПЕШНО ЗАВЕРШЁН С СОХРАНЕНИЕМ $audioStreams АУДИОДОРОЖЕК ===');
     return true;
   }
 
