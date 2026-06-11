@@ -1,6 +1,6 @@
 ======================================== 
 SoViCut - Полный код проекта 
-Собрано: 10.06.2026  9:48:00,66 
+Собрано: 10.06.2026 12:53:12,47 
 ======================================== 
  
  
@@ -355,6 +355,280 @@ class ClipsTab extends StatelessWidget {
         ],
       ),
     );
+  }
+} 
+ 
+======================================== 
+FILE: D:\SoViCut\lib\concat_strategy.dart 
+======================================== 
+ 
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'audio_track.dart';
+import 'clip.dart';
+import 'export_settings_tab.dart';
+import 'export_strategy.dart';
+
+class ConcatStrategy implements ExportStrategy {
+  @override
+  String get name => 'Округление до ключевых кадров (быстро)';
+
+  /// Получает список времен всех I-кадров в видео
+  Future<List<double>> _getIFrames(String inputPath) async {
+    final result = await Process.run(
+      'ffprobe',
+      [
+        '-v', 'error',
+        '-show_entries', 'frame=key_frame,pkt_pts_time',
+        '-select_streams', 'v',
+        '-of', 'csv=p=0',
+        inputPath
+      ],
+      runInShell: true,
+    );
+
+    final List<double> iFrames = [];
+    final lines = result.stdout.toString().trim().split('\n');
+    for (final line in lines) {
+      if (line.contains('key_frame=1')) {
+        final parts = line.split(',');
+        if (parts.length >= 2) {
+          final time = double.tryParse(parts[1]);
+          if (time != null) {
+            iFrames.add(time);
+          }
+        }
+      }
+    }
+    return iFrames;
+  }
+
+  /// Округляет время до ближайшего I-кадра в сторону уменьшения
+  double _roundToIFrame(double time, List<double> iFrames) {
+    double result = time;
+    for (final iFrame in iFrames.reversed) {
+      if (iFrame <= time) {
+        result = iFrame;
+        break;
+      }
+    }
+    return result;
+  }
+
+  @override
+  Future<bool> export({
+    required String inputPath,
+    required String outputPath,
+    required List<AudioTrack> audioTracks,
+    required bool mixAudio,
+    double? trimSeconds,
+    int? trimMode,
+    required List<Clip> clips,
+    ExportSettings? exportSettings,
+  }) async {
+    final List<String> args = [];
+    
+    final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
+    
+    final int originalBitrateValue = await _getAudioBitrate(inputPath);
+    final bool useCustomSettings = exportSettings != null && 
+        (exportSettings.audioBitrate != (originalBitrateValue ~/ 1000) ||
+         exportSettings.audioCodec != AudioCodec.aac ||
+         exportSettings.bitrateMode != BitrateMode.cbr ||
+         exportSettings.sampleRate != 48000 ||
+         exportSettings.channels != 2 ||
+         exportSettings.videoQuality != VideoQuality.source);
+    
+    int targetAudioBitrate;
+    String targetAudioCodec;
+    int targetSampleRate;
+    int targetChannels;
+    String videoCodec;
+    int crf;
+    bool copyVideo = true;
+    
+    if (useCustomSettings && exportSettings != null) {
+      targetAudioBitrate = exportSettings.audioBitrate;
+      targetAudioCodec = exportSettings.audioCodecName;
+      targetSampleRate = exportSettings.sampleRate;
+      targetChannels = exportSettings.channels;
+      videoCodec = exportSettings.videoCodecName;
+      crf = exportSettings.crf;
+      copyVideo = exportSettings.videoQuality == VideoQuality.source;
+    } else {
+      targetAudioBitrate = originalBitrateValue ~/ 1000;
+      targetAudioCodec = 'aac';
+      targetSampleRate = 48000;
+      targetChannels = 2;
+      videoCodec = 'libx264';
+      crf = 23;
+      copyVideo = true;
+    }
+    
+    final iFrames = await _getIFrames(inputPath);
+    print('Найдено I-кадров: ${iFrames.length}');
+    
+    final roundedClips = clips.map((clip) {
+      final newStart = _roundToIFrame(clip.startTime, iFrames);
+      final newEnd = _roundToIFrame(clip.endTime, iFrames);
+      print('Фрагмент: исходный [${clip.startTime.toStringAsFixed(3)} - ${clip.endTime.toStringAsFixed(3)}]');
+      print('         округлён [${newStart.toStringAsFixed(3)} - ${newEnd.toStringAsFixed(3)}]');
+      return Clip(
+        id: clip.id,
+        sourcePath: clip.sourcePath,
+        startTime: newStart,
+        endTime: newEnd,
+        isVisible: clip.isVisible,
+      );
+    }).toList();
+    
+    final activeClips = roundedClips.where((c) => c.isVisible).toList();
+    final concatDir = await Directory.systemTemp.createTemp('sovicut_concat');
+    final concatPath = '${concatDir.path}\\concat.txt';
+    final concatFile = File(concatPath);
+    final content = StringBuffer();
+    
+    for (final clip in activeClips) {
+      content.writeln("file '$inputPath'");
+      content.writeln("inpoint ${clip.startTime.toStringAsFixed(6)}");
+      content.writeln("outpoint ${clip.endTime.toStringAsFixed(6)}");
+    }
+    await concatFile.writeAsString(content.toString());
+    
+    args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
+    args.addAll(['-copyts', '-start_at_zero']);
+    args.addAll(['-avoid_negative_ts', 'make_zero']);
+    args.addAll(['-fflags', '+genpts']);
+    
+    if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
+      args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
+    }
+    
+    args.addAll(['-map', '0:v:0', '-c:v', copyVideo ? 'copy' : videoCodec]);
+    if (!copyVideo) {
+      args.addAll(['-crf', crf.toString()]);
+    }
+    
+    final enabledIndices = <int>[];
+    for (int i = 0; i < audioTracks.length; i++) {
+      if (audioTracks[i].isEnabled) {
+        enabledIndices.add(i);
+      }
+    }
+    
+    if (needAudioReencode && enabledIndices.isNotEmpty) {
+      final List<String> audioFilters = [];
+      final List<String> audioMaps = [];
+      
+      if (mixAudio && enabledIndices.length > 1) {
+        final List<String> filterParts = [];
+        final List<String> mixInputs = [];
+        for (int i = 0; i < enabledIndices.length; i++) {
+          final track = audioTracks[enabledIndices[i]];
+          final factor = track.volumePercent / 100;
+          if (factor != 1.0) {
+            filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
+            mixInputs.add('[a$i]');
+          } else {
+            mixInputs.add('[0:a:${track.index}]');
+          }
+        }
+        if (filterParts.isNotEmpty) {
+          audioFilters.add(filterParts.join('; '));
+        }
+        audioFilters.add('${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]');
+        audioMaps.addAll(['-map', '[aout]']);
+      } else {
+        for (int i = 0; i < enabledIndices.length; i++) {
+          final track = audioTracks[enabledIndices[i]];
+          final factor = track.volumePercent / 100;
+          if (factor != 1.0) {
+            audioFilters.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
+            audioMaps.addAll(['-map', '[a$i]']);
+          } else {
+            audioMaps.addAll(['-map', '0:a:${track.index}']);
+          }
+        }
+      }
+      
+      if (audioFilters.isNotEmpty) {
+        args.addAll(['-filter_complex', audioFilters.join('; ')]);
+      }
+      args.addAll(audioMaps);
+      args.addAll(['-c:a', targetAudioCodec, '-b:a', '${targetAudioBitrate}k']);
+      if (exportSettings != null && exportSettings.bitrateMode == BitrateMode.vbr) {
+        args.addAll(['-q:a', '2']);
+      }
+      args.addAll(['-ar', targetSampleRate.toString()]);
+      args.addAll(['-ac', targetChannels.toString()]);
+    } else {
+      final int audioCount = await _getAudioStreamCount(inputPath);
+      for (int i = 0; i < audioCount; i++) {
+        args.addAll(['-map', '0:a:$i']);
+      }
+      args.addAll(['-c:a', 'copy']);
+    }
+    
+    args.addAll(['-y', outputPath]);
+    
+    print('=== СТРАТЕГИЯ: ${name} ===');
+    print('ffmpeg ${args.join(' ')}');
+    
+    final result = await Process.run('ffmpeg', args, runInShell: true);
+    
+    try { await concatDir.delete(recursive: true); } catch (e) {}
+    
+    print('=== EXIT CODE: ${result.exitCode} ===');
+    if (result.exitCode != 0) {
+      print('=== STDERR ===');
+      print(result.stderr);
+    }
+    
+    return result.exitCode == 0;
+  }
+
+  static Future<int> _getAudioStreamCount(String videoPath) async {
+    final result = await Process.run(
+      'ffprobe',
+      [
+        '-v', 'error',
+        '-show_entries', 'stream=codec_type',
+        '-of', 'csv=p=0',
+        videoPath
+      ],
+      runInShell: true,
+    );
+    final lines = result.stdout.toString().trim().split('\n');
+    int count = 0;
+    for (final line in lines) {
+      if (line.contains('audio')) count++;
+    }
+    return count;
+  }
+
+  static Future<int> _getAudioBitrate(String videoPath) async {
+    try {
+      final result = await Process.run(
+        'ffprobe',
+        [
+          '-v', 'error',
+          '-show_entries', 'stream=codec_type,bit_rate',
+          '-of', 'default=noprint_wrappers=1:nokey=1',
+          videoPath
+        ],
+        runInShell: true,
+      );
+      final lines = result.stdout.toString().trim().split('\n');
+      for (int i = 0; i < lines.length; i++) {
+        if (lines[i] == 'audio' && i + 1 < lines.length) {
+          final bitrate = int.tryParse(lines[i + 1]);
+          if (bitrate != null && bitrate > 0) {
+            return bitrate;
+          }
+        }
+      }
+    } catch (e) {}
+    return 192000;
   }
 } 
  
@@ -827,6 +1101,58 @@ class ExportSettings {
 } 
  
 ======================================== 
+FILE: D:\SoViCut\lib\export_strategy.dart 
+======================================== 
+ 
+import 'dart:io';
+import 'audio_track.dart';
+import 'clip.dart';
+import 'export_settings_tab.dart';
+
+/// Абстрактный класс для стратегий экспорта
+abstract class ExportStrategy {
+  Future<bool> export({
+    required String inputPath,
+    required String outputPath,
+    required List<AudioTrack> audioTracks,
+    required bool mixAudio,
+    double? trimSeconds,
+    int? trimMode,
+    required List<Clip> clips,
+    ExportSettings? exportSettings,
+  });
+
+  String get name;
+}
+
+/// Результат проверки коротких фрагментов
+class ShortClipCheckResult {
+  final bool hasShortClips;
+  final List<int> shortClipIndices;
+  final List<double> shortClipDurations;
+  final double threshold;
+
+  ShortClipCheckResult({
+    required this.hasShortClips,
+    required this.shortClipIndices,
+    required this.shortClipDurations,
+    this.threshold = 0.5,
+  });
+
+  String getWarningMessage() {
+    if (!hasShortClips) return '';
+    final buffer = StringBuffer();
+    buffer.writeln('⚠️ Обнаружены очень короткие фрагменты (< $threshold сек):');
+    for (int i = 0; i < shortClipIndices.length; i++) {
+      buffer.writeln('  Фрагмент ${shortClipIndices[i] + 1}: ${shortClipDurations[i].toStringAsFixed(3)} сек');
+    }
+    buffer.writeln('\nЭто может привести к артефактам или потере звука.');
+    buffer.writeln('Выберите способ обработки:');
+    return buffer.toString();
+  }
+} 
+ 
+======================================== 
 FILE: D:\SoViCut\lib\export_tab.dart 
 ======================================== 
  
@@ -972,6 +1298,7 @@ import 'dart:io';
 import 'audio_track.dart';
 import 'clip.dart';
 import 'export_settings_tab.dart';
+import 'ffmpeg_utils.dart';
 
 class FFmpegService {
   static Future<List<AudioTrack>> analyzeAudio(String videoPath) async {
@@ -985,7 +1312,6 @@ class FFmpegService {
       ],
       runInShell: true,
     );
-
     final lines = probeResult.stdout.toString().trim().split('\n');
     final List<int> audioRealIndexes = [];
     
@@ -996,7 +1322,7 @@ class FFmpegService {
         if (index != null) audioRealIndexes.add(index);
       }
     }
-
+    
     final List<AudioTrack> tracks = [];
     for (int i = 0; i < audioRealIndexes.length; i++) {
       double originalVolume = -100;
@@ -1005,7 +1331,7 @@ class FFmpegService {
           'ffmpeg',
           [
             '-i', videoPath,
-            '-map', '0:a:$i',
+            '-map', '0:a:${audioRealIndexes[i]}',
             '-af', 'volumedetect',
             '-f', 'null',
             'NUL'
@@ -1020,7 +1346,7 @@ class FFmpegService {
       } catch (e) {}
       
       tracks.add(AudioTrack(
-        index: i,
+        index: audioRealIndexes[i],
         name: 'Дорожка ${i + 1}',
         isEnabled: true,
         volumePercent: 100,
@@ -1028,25 +1354,6 @@ class FFmpegService {
       ));
     }
     return tracks;
-  }
-
-  static Future<int> _getAudioStreamCount(String videoPath) async {
-    final result = await Process.run(
-      'ffprobe',
-      [
-        '-v', 'error',
-        '-show_entries', 'stream=codec_type',
-        '-of', 'csv=p=0',
-        videoPath
-      ],
-      runInShell: true,
-    );
-    final lines = result.stdout.toString().trim().split('\n');
-    int count = 0;
-    for (final line in lines) {
-      if (line.contains('audio')) count++;
-    }
-    return count;
   }
 
   static Future<int> _getAudioBitrate(String videoPath) async {
@@ -1108,7 +1415,17 @@ class FFmpegService {
     final bool needConcat = hasClips && clips!.any((c) => !c.isVisible) || (hasClips && clips.length > 1);
     final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
     
-    // Определяем настройки (пользовательские или из исходника)
+    // Получаем РЕАЛЬНЫЕ индексы всех потоков
+    final streamIndices = await FFmpegUtils.getStreamIndices(inputPath);
+    final List<int> videoIndices = streamIndices['video']!;
+    final List<int> audioIndices = streamIndices['audio']!;
+    final int audioCount = audioIndices.length;
+    
+    print('=== ИНДЕКСЫ ПОТОКОВ ===');
+    print('Видео: $videoIndices');
+    print('Аудио: $audioIndices (всего: $audioCount)');
+    print('needConcat: $needConcat, needAudioReencode: $needAudioReencode');
+    
     final int originalBitrateValue = await _getAudioBitrate(inputPath);
     final bool useCustomSettings = exportSettings != null && 
         (exportSettings.audioBitrate != (originalBitrateValue ~/ 1000) ||
@@ -1144,14 +1461,11 @@ class FFmpegService {
       copyVideo = true;
     }
     
-    print('=== needConcat: $needConcat, needAudioReencode: $needAudioReencode ===');
-    print('=== useCustomSettings: $useCustomSettings ===');
-    print('=== targetAudioBitrate: $targetAudioBitrate kbps ===');
-    print('=== copyVideo: $copyVideo, videoCodec: $videoCodec ===');
-    
     final List<String> tempFiles = [];
     
     if (needConcat) {
+      // ========== РЕЖИМ С ФРАГМЕНТАМИ ==========
+      print('=== РЕЖИМ CONCAT ===');
       for (int i = 0; i < clips!.length; i++) {
         final clip = clips[i];
         if (!clip.isVisible) continue;
@@ -1163,30 +1477,34 @@ class FFmpegService {
         tempArgs.addAll(['-i', inputPath]);
         tempArgs.addAll(['-ss', clip.startTime.toStringAsFixed(6)]);
         tempArgs.addAll(['-t', clip.duration.toStringAsFixed(6)]);
-        tempArgs.addAll(['-map', '0:v:0']);
         
-        if (copyVideo) {
-          tempArgs.addAll(['-c:v', 'copy']);
-        } else {
-          tempArgs.addAll(['-c:v', videoCodec, '-crf', crf.toString()]);
-        }
-        
-        final enabledIndices = <int>[];
-        for (int j = 0; j < audioTracks.length; j++) {
-          if (audioTracks[j].isEnabled) {
-            enabledIndices.add(j);
+        if (!needAudioReencode) {
+          // Копируем ВСЕ потоки без изменений (убираем metadata)
+          for (final idx in videoIndices) {
+            tempArgs.addAll(['-map', '0:v:$idx']);
           }
-        }
-        
-        if (needAudioReencode && enabledIndices.isNotEmpty) {
-          final List<String> audioFilters = [];
-          final List<String> audioMaps = [];
+          for (final idx in audioIndices) {
+            tempArgs.addAll(['-map', '0:a:$idx']);
+          }
+          tempArgs.addAll(['-c:v', 'copy', '-c:a', 'copy']);
+          print('Фрагмент ${i+1}: копирование всех ${audioCount} аудиопотоков');
+        } else {
+          // С изменениями аудио
+          tempArgs.addAll(['-map', '0:v:0']);
+          if (copyVideo) {
+            tempArgs.addAll(['-c:v', 'copy']);
+          } else {
+            tempArgs.addAll(['-c:v', videoCodec, '-crf', crf.toString()]);
+          }
           
-          if (mixAudio && enabledIndices.length > 1) {
+          final enabledTracks = audioTracks.where((t) => t.isEnabled).toList();
+          print('Фрагмент ${i+1}: перекодирование аудио, включённых дорожек: ${enabledTracks.length}');
+          
+          if (mixAudio && enabledTracks.length > 1) {
             final List<String> filterParts = [];
             final List<String> mixInputs = [];
-            for (int j = 0; j < enabledIndices.length; j++) {
-              final track = audioTracks[enabledIndices[j]];
+            for (int j = 0; j < enabledTracks.length; j++) {
+              final track = enabledTracks[j];
               final factor = track.volumePercent / 100;
               if (factor != 1.0) {
                 filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$j]');
@@ -1196,61 +1514,42 @@ class FFmpegService {
               }
             }
             if (filterParts.isNotEmpty) {
-              audioFilters.add(filterParts.join('; '));
+              tempArgs.addAll(['-filter_complex', filterParts.join('; ')]);
             }
-            audioFilters.add('${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]');
-            audioMaps.addAll(['-map', '[aout]']);
+            tempArgs.addAll(['-filter_complex', '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]']);
+            tempArgs.addAll(['-map', '[aout]']);
           } else {
-            for (int j = 0; j < enabledIndices.length; j++) {
-              final track = audioTracks[enabledIndices[j]];
+            for (final track in enabledTracks) {
               final factor = track.volumePercent / 100;
               if (factor != 1.0) {
-                audioFilters.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$j]');
-                audioMaps.addAll(['-map', '[a$j]']);
+                tempArgs.addAll(['-filter_complex', '[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a${track.index}]']);
+                tempArgs.addAll(['-map', '[a${track.index}]']);
               } else {
-                audioMaps.addAll(['-map', '0:a:${track.index}']);
+                tempArgs.addAll(['-map', '0:a:${track.index}']);
               }
             }
           }
-          
-          if (audioFilters.isNotEmpty) {
-            tempArgs.addAll(['-filter_complex', audioFilters.join('; ')]);
-          }
-          tempArgs.addAll(audioMaps);
           tempArgs.addAll(['-c:a', targetAudioCodec, '-b:a', '${targetAudioBitrate}k']);
           if (exportSettings != null && exportSettings.bitrateMode == BitrateMode.vbr) {
             tempArgs.addAll(['-q:a', '2']);
           }
           tempArgs.addAll(['-ar', targetSampleRate.toString()]);
           tempArgs.addAll(['-ac', targetChannels.toString()]);
-        } else {
-          final int audioCount = await _getAudioStreamCount(inputPath);
-          for (int j = 0; j < audioCount; j++) {
-            tempArgs.addAll(['-map', '0:a:$j']);
-          }
-          tempArgs.addAll(['-c:a', 'copy']);
         }
         
         tempArgs.addAll(['-y', tempPath]);
         
-        print('=== ОБРЕЗКА ФРАГМЕНТА $i ===');
-        print('ffmpeg ${tempArgs.join(' ')}');
-        
         final tempResult = await Process.run('ffmpeg', tempArgs, runInShell: true);
         if (tempResult.exitCode != 0) {
-          print('Ошибка обрезки фрагмента $i: ${tempResult.stderr}');
-          for (final f in tempFiles) {
-            try { await File(f).delete(); } catch (_) {}
-          }
+          print('ОШИБКА при обработке фрагмента $i: ${tempResult.stderr}');
+          for (final f in tempFiles) { try { await File(f).delete(); } catch (_) {} }
           return false;
         }
       }
       
-      if (tempFiles.isEmpty) {
-        print('Нет активных фрагментов для экспорта');
-        return false;
-      }
+      if (tempFiles.isEmpty) return false;
       
+      // ========== СКЛЕЙКА ФРАГМЕНТОВ ==========
       final concatDir = await Directory.systemTemp.createTemp('sovicut_concat_final');
       final concatPath = '${concatDir.path}\\concat.txt';
       final concatFile = File(concatPath);
@@ -1261,22 +1560,29 @@ class FFmpegService {
       await concatFile.writeAsString(content.toString());
       
       args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
-      args.addAll(['-c', 'copy']);
+      
+      // !!! КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ !!!
+      // Явно маппим ВСЕ аудиодорожки из КАЖДОГО временного файла
+      for (int i = 0; i < tempFiles.length; i++) {
+        for (int j = 0; j < audioCount; j++) {
+          args.addAll(['-map', '${i}:a:$j']);
+        }
+      }
+      // Маппим видео из первого файла
+      args.addAll(['-map', '0:v:0']);
+      args.addAll(['-c:v', 'copy', '-c:a', 'copy']);
       
       if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
         args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
       }
-      
       args.addAll(['-y', outputPath]);
       
-      print('=== СКЛЕЙКА ФРАГМЕНТОВ ===');
+      print('=== ФИНАЛЬНАЯ КОМАНДА СКЛЕЙКИ ===');
       print('ffmpeg ${args.join(' ')}');
       
       final result = await Process.run('ffmpeg', args, runInShell: true);
       
-      for (final f in tempFiles) {
-        try { await File(f).delete(); } catch (_) {}
-      }
+      for (final f in tempFiles) { try { await File(f).delete(); } catch (_) {} }
       try { await concatDir.delete(recursive: true); } catch (_) {}
       
       if (result.exitCode != 0) {
@@ -1284,9 +1590,12 @@ class FFmpegService {
         return false;
       }
       
-      print('=== EXIT CODE: ${result.exitCode} ===');
+      print('=== ЭКСПОРТ УСПЕШНО ЗАВЕРШЁН ===');
       return true;
+      
     } else {
+      // ========== ОБЫЧНЫЙ ЭКСПОРТ (БЕЗ ФРАГМЕНТОВ) ==========
+      print('=== ОБЫЧНЫЙ ЭКСПОРТ ===');
       if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
         args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
       }
@@ -1312,85 +1621,140 @@ class FFmpegService {
         }
       }
       
-      final enabledIndices = <int>[];
-      for (int i = 0; i < audioTracks.length; i++) {
-        if (audioTracks[i].isEnabled) {
-          enabledIndices.add(i);
+      if (!needAudioReencode) {
+        // Копируем ВСЕ потоки
+        for (final idx in videoIndices) {
+          args.addAll(['-map', '0:v:$idx']);
         }
-      }
-      
-      if (needAudioReencode && enabledIndices.isNotEmpty) {
-        final List<String> audioFilters = [];
-        final List<String> audioMaps = [];
+        for (final idx in audioIndices) {
+          args.addAll(['-map', '0:a:$idx']);
+        }
+        args.addAll(['-c:v', 'copy', '-c:a', 'copy']);
+        print('Копирование всех $audioCount аудиопотоков');
+      } else {
+        // С изменениями аудио
+        args.addAll(['-map', '0:v:0']);
+        if (copyVideo) {
+          args.addAll(['-c:v', 'copy']);
+        } else {
+          args.addAll(['-c:v', videoCodec, '-crf', crf.toString()]);
+        }
         
-        if (mixAudio && enabledIndices.length > 1) {
+        final enabledTracks = audioTracks.where((t) => t.isEnabled).toList();
+        print('Перекодирование аудио, включённых дорожек: ${enabledTracks.length}');
+        
+        if (mixAudio && enabledTracks.length > 1) {
           final List<String> filterParts = [];
           final List<String> mixInputs = [];
-          for (int i = 0; i < enabledIndices.length; i++) {
-            final track = audioTracks[enabledIndices[i]];
+          for (int j = 0; j < enabledTracks.length; j++) {
+            final track = enabledTracks[j];
             final factor = track.volumePercent / 100;
             if (factor != 1.0) {
-              filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
-              mixInputs.add('[a$i]');
+              filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$j]');
+              mixInputs.add('[a$j]');
             } else {
               mixInputs.add('[0:a:${track.index}]');
             }
           }
           if (filterParts.isNotEmpty) {
-            audioFilters.add(filterParts.join('; '));
+            args.addAll(['-filter_complex', filterParts.join('; ')]);
           }
-          audioFilters.add('${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]');
-          audioMaps.addAll(['-map', '[aout]']);
+          args.addAll(['-filter_complex', '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]']);
+          args.addAll(['-map', '[aout]']);
         } else {
-          for (int i = 0; i < enabledIndices.length; i++) {
-            final track = audioTracks[enabledIndices[i]];
+          for (final track in enabledTracks) {
             final factor = track.volumePercent / 100;
             if (factor != 1.0) {
-              audioFilters.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
-              audioMaps.addAll(['-map', '[a$i]']);
+              args.addAll(['-filter_complex', '[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a${track.index}]']);
+              args.addAll(['-map', '[a${track.index}]']);
             } else {
-              audioMaps.addAll(['-map', '0:a:${track.index}']);
+              args.addAll(['-map', '0:a:${track.index}']);
             }
           }
         }
-        
-        if (audioFilters.isNotEmpty) {
-          args.addAll(['-filter_complex', audioFilters.join('; ')]);
-        }
-        args.addAll(audioMaps);
         args.addAll(['-c:a', targetAudioCodec, '-b:a', '${targetAudioBitrate}k']);
         if (exportSettings != null && exportSettings.bitrateMode == BitrateMode.vbr) {
           args.addAll(['-q:a', '2']);
         }
         args.addAll(['-ar', targetSampleRate.toString()]);
         args.addAll(['-ac', targetChannels.toString()]);
-      } else {
-        final int audioCount = await _getAudioStreamCount(inputPath);
-        for (int i = 0; i < audioCount; i++) {
-          args.addAll(['-map', '0:a:$i']);
-        }
       }
       
-      args.addAll(['-map', '0:v:0']);
-      if (copyVideo) {
-        args.addAll(['-c:v', 'copy']);
-      } else {
-        args.addAll(['-c:v', videoCodec, '-crf', crf.toString()]);
-      }
       args.addAll(['-y', outputPath]);
-      
-      print('=== FFmpeg команда ===');
-      print('ffmpeg ${args.join(' ')}');
-      print('=======================');
+      print('Команда: ffmpeg ${args.join(' ')}');
       
       final result = await Process.run('ffmpeg', args, runInShell: true);
-      print('=== EXIT CODE: ${result.exitCode} ===');
       if (result.exitCode != 0) {
-        print('=== STDERR ===');
-        print(result.stderr);
+        print('Ошибка: ${result.stderr}');
+        return false;
       }
-      return result.exitCode == 0;
+      
+      print('=== ЭКСПОРТ УСПЕШНО ЗАВЕРШЁН ===');
+      return true;
     }
+  }
+} 
+ 
+======================================== 
+FILE: D:\SoViCut\lib\ffmpeg_utils.dart 
+======================================== 
+ 
+import 'dart:io';
+
+class FFmpegUtils {
+  /// Анализирует видеофайл и возвращает Map с информацией о потоках.
+  /// Ключи: 'video' - список индексов видеопотоков, 'audio' - список индексов аудиопотоков.
+  static Future<Map<String, List<int>>> getStreamIndices(String videoPath) async {
+    final result = await Process.run(
+      'ffprobe',
+      [
+        '-v', 'error',
+        '-show_entries', 'stream=index,codec_type',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        videoPath
+      ],
+      runInShell: true,
+    );
+
+    final lines = result.stdout.toString().trim().split('\n');
+    final List<int> videoIndices = [];
+    final List<int> audioIndices = [];
+
+    for (int i = 0; i < lines.length; i++) {
+      if (lines[i] == 'codec_type=video' && i > 0) {
+        final indexLine = lines[i - 1];
+        if (indexLine.startsWith('index=')) {
+          final int index = int.parse(indexLine.split('=')[1]);
+          videoIndices.add(index);
+        }
+      } else if (lines[i] == 'codec_type=audio' && i > 0) {
+        final indexLine = lines[i - 1];
+        if (indexLine.startsWith('index=')) {
+          final int index = int.parse(indexLine.split('=')[1]);
+          audioIndices.add(index);
+        }
+      }
+    }
+
+    return {'video': videoIndices, 'audio': audioIndices};
+  }
+
+  /// Строит аргументы для ffmpeg, чтобы скопировать ВСЕ потоки (видео и аудио) из исходного файла.
+  static Future<List<String>> buildCopyAllStreamsArgs(String inputPath) async {
+    final indices = await getStreamIndices(inputPath);
+    final args = <String>[];
+
+    // Добавляем все видеопотоки
+    for (final idx in indices['video']!) {
+      args.addAll(['-map', '0:v:$idx']);
+    }
+
+    // Добавляем все аудиопотоки
+    for (final idx in indices['audio']!) {
+      args.addAll(['-map', '0:a:$idx']);
+    }
+
+    return args;
   }
 } 
  
@@ -1410,6 +1774,10 @@ import 'preview_area.dart';
 import 'timeline_widget.dart';
 import 'tool_panel.dart';
 import 'export_settings_tab.dart';
+import 'export_strategy.dart';
+import 'concat_strategy.dart';
+import 'transcode_strategy.dart';
+import 'short_clips_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1442,6 +1810,110 @@ class _HomeScreenState extends State<HomeScreen> {
     originalSampleRate: 48000,
     originalChannels: 2,
   );
+  
+  double _previewPosition = 0;
+
+  double _getTotalDuration() {
+    double total = 0;
+    for (final clip in _clips) {
+      if (clip.isVisible) {
+        total += clip.duration;
+      }
+    }
+    return total;
+  }
+
+  void _onPreviewPositionChanged(double position) {
+    setState(() {
+      _previewPosition = position;
+    });
+  }
+
+  void _onTimelineCursorMoved(double timeInSeconds) {
+    final totalDur = _getTotalDuration();
+    if (totalDur > 0) {
+      setState(() {
+        _previewPosition = timeInSeconds / totalDur;
+      });
+    }
+  }
+
+  /// Проверяет наличие коротких фрагментов (< 0.5 сек)
+  ShortClipCheckResult _checkShortClips() {
+    final List<int> shortIndices = [];
+    final List<double> shortDurations = [];
+    for (int i = 0; i < _clips.length; i++) {
+      final clip = _clips[i];
+      if (clip.isVisible && clip.duration < 0.5) {
+        shortIndices.add(i);
+        shortDurations.add(clip.duration);
+      }
+    }
+    return ShortClipCheckResult(
+      hasShortClips: shortIndices.isNotEmpty,
+      shortClipIndices: shortIndices,
+      shortClipDurations: shortDurations,
+      threshold: 0.5,
+    );
+  }
+
+  Future<void> _exportWithStrategy(ExportStrategy strategy) async {
+    if (_videoPath == null) return;
+    
+    setState(() => _isLoading = true);
+    
+    final dir = await getDownloadsDirectory();
+    final originalFileName = _videoPath!.split('\\').last;
+    final nameWithoutExt = originalFileName.lastIndexOf('.') != -1
+        ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+        : originalFileName;
+    final baseName = nameWithoutExt;
+    final outPath = await _getUniqueFilePath(dir!.path, baseName);
+    
+    final success = await strategy.export(
+      inputPath: _videoPath!,
+      outputPath: outPath,
+      audioTracks: _audioEnabled ? _audioTracks : [],
+      mixAudio: _mixTracks,
+      trimSeconds: _trimEnabled ? _trimSeconds : null,
+      trimMode: _trimMode,
+      clips: _clips,
+      exportSettings: _exportSettings,
+    );
+    
+    setState(() => _isLoading = false);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(success ? '✅ Экспорт завершён!\n$outPath' : '❌ Ошибка экспорта')),
+    );
+  }
+
+  Future<void> _export() async {
+    if (_videoPath == null) return;
+    
+    final shortClipsCheck = _checkShortClips();
+    
+    if (shortClipsCheck.hasShortClips) {
+      // Показываем диалог выбора стратегии
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => ShortClipsDialog(
+          checkResult: shortClipsCheck,
+          onStrategySelected: (strategy) {
+            Navigator.pop(context);
+            _exportWithStrategy(strategy);
+          },
+          onCancel: () {
+            Navigator.pop(context);
+          },
+        ),
+      );
+    } else {
+      // Нет коротких фрагментов — используем стандартную стратегию ConcatStrategy
+      await _exportWithStrategy(ConcatStrategy());
+    }
+  }
 
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.video);
@@ -1482,6 +1954,7 @@ class _HomeScreenState extends State<HomeScreen> {
         originalSampleRate: audioInfo.sampleRate,
         originalChannels: audioInfo.channels,
       );
+      _previewPosition = 0;
       _isLoading = false;
     });
   }
@@ -1585,8 +2058,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _selectClip(int clipIndex, double cursorInClip) {}
 
-  void _moveCursor(double timeInSeconds) {}
-
   Future<String> _getUniqueFilePath(String directory, String baseName) async {
     final editedName = '${baseName}_edited.mp4';
     String candidatePath = '$directory\\$editedName';
@@ -1604,37 +2075,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       counter++;
     }
-  }
-
-  Future<void> _export() async {
-    if (_videoPath == null) return;
-    setState(() => _isLoading = true);
-    final dir = await getDownloadsDirectory();
-    
-    final originalFileName = _videoPath!.split('\\').last;
-    final nameWithoutExt = originalFileName.lastIndexOf('.') != -1
-        ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-        : originalFileName;
-    
-    final baseName = nameWithoutExt;
-    final outPath = await _getUniqueFilePath(dir!.path, baseName);
-    
-    final success = await FFmpegService.exportVideo(
-      inputPath: _videoPath!,
-      outputPath: outPath,
-      audioTracks: _audioEnabled ? _audioTracks : [],
-      mixAudio: _mixTracks,
-      trimSeconds: _trimEnabled ? _trimSeconds : null,
-      trimMode: _trimMode,
-      clips: _clips,
-      exportSettings: _exportSettings,
-    );
-    
-    setState(() => _isLoading = false);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? '✅ Экспорт завершён!\n$outPath' : '❌ Ошибка экспорта')),
-    );
   }
 
   @override
@@ -1682,6 +2122,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               _loadVideo(detail.files.first.path!);
                             }
                           },
+                          clips: _clips,
+                          cursorPosition: _previewPosition,
+                          onPositionChanged: _onPreviewPositionChanged,
                         ),
                       ),
                     ),
@@ -1728,7 +2171,8 @@ class _HomeScreenState extends State<HomeScreen> {
               onDelete: _deleteClip,
               onRestore: _restoreClip,
               onSelectClip: _selectClip,
-              onCursorMoved: _moveCursor,
+              onCursorMoved: _onTimelineCursorMoved,
+              externalCursorPosition: _previewPosition,
             ),
             Container(
               decoration: BoxDecoration(
@@ -1800,16 +2244,23 @@ class SoViCutApp extends StatelessWidget {
 FILE: D:\SoViCut\lib\preview_area.dart 
 ======================================== 
  
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
+import 'clip.dart';
 
-class PreviewArea extends StatelessWidget {
+class PreviewArea extends StatefulWidget {
   final String? videoPath;
   final bool isDragging;
   final Function(DropDoneDetails) onDragDone;
   final Function() onDragEntered;
   final Function() onDragExited;
   final VoidCallback onTap;
+  final List<Clip> clips;
+  final double cursorPosition;
+  final Function(double) onPositionChanged;
   
   const PreviewArea({
     super.key,
@@ -1819,75 +2270,309 @@ class PreviewArea extends StatelessWidget {
     required this.onDragEntered,
     required this.onDragExited,
     required this.onTap,
+    required this.clips,
+    required this.cursorPosition,
+    required this.onPositionChanged,
   });
 
-  String get _fileName {
-    if (videoPath == null) return '';
-    return videoPath!.split('\\').last;
+  @override
+  State<PreviewArea> createState() => _PreviewAreaState();
+}
+
+class _PreviewAreaState extends State<PreviewArea> {
+  VideoPlayerController? _controller;
+  ChewieController? _chewieController;
+  bool _isInitializing = false;
+  String _errorMessage = '';
+  bool _isSeeking = false;
+  double _currentPlaybackPosition = 0;
+
+  double get _totalDuration {
+    double total = 0;
+    for (final clip in widget.clips) {
+      if (clip.isVisible) {
+        total += clip.duration;
+      }
+    }
+    return total;
+  }
+
+  double _mapTimelineToOriginal(double timelinePosition) {
+    if (_totalDuration <= 0) return 0;
+    final targetTime = timelinePosition * _totalDuration;
+    double accumulated = 0;
+    for (final clip in widget.clips) {
+      if (!clip.isVisible) continue;
+      if (targetTime <= accumulated + clip.duration) {
+        return clip.startTime + (targetTime - accumulated);
+      }
+      accumulated += clip.duration;
+    }
+    return 0;
+  }
+
+  double _mapOriginalToTimeline(double originalSeconds) {
+    double accumulated = 0;
+    for (final clip in widget.clips) {
+      if (!clip.isVisible) continue;
+      if (originalSeconds >= clip.startTime && originalSeconds <= clip.endTime) {
+        final timelineSeconds = accumulated + (originalSeconds - clip.startTime);
+        return timelineSeconds / _totalDuration;
+      }
+      accumulated += clip.duration;
+    }
+    return 0;
+  }
+
+  @override
+  void didUpdateWidget(PreviewArea oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.videoPath != oldWidget.videoPath) {
+      _initializePlayer();
+    } else if (widget.clips != oldWidget.clips) {
+      _initializePlayer();
+    } else if (widget.cursorPosition != oldWidget.cursorPosition && !_isSeeking) {
+      _seekToTimelinePosition(widget.cursorPosition);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    _chewieController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _seekToTimelinePosition(double timelinePosition) async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    final originalSeconds = _mapTimelineToOriginal(timelinePosition);
+    _isSeeking = true;
+    await _controller!.seekTo(Duration(milliseconds: (originalSeconds * 1000).toInt()));
+    _isSeeking = false;
+  }
+
+  Future<void> _initializePlayer() async {
+    if (widget.videoPath == null) return;
+    
+    _isInitializing = true;
+    _errorMessage = '';
+    setState(() {});
+
+    if (_controller != null) {
+      _controller!.dispose();
+    }
+    if (_chewieController != null) {
+      _chewieController!.dispose();
+    }
+
+    final file = File(widget.videoPath!);
+    if (!await file.exists()) {
+      setState(() {
+        _errorMessage = 'Файл не найден';
+        _isInitializing = false;
+      });
+      return;
+    }
+
+    _controller = VideoPlayerController.file(file);
+    
+    try {
+      await _controller!.initialize();
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Ошибка загрузки: $e';
+        _isInitializing = false;
+      });
+      return;
+    }
+
+    _controller!.addListener(() {
+      if (!mounted) return;
+      if (_isSeeking) return;
+      
+      final currentOriginal = _controller!.value.position.inMilliseconds / 1000;
+      final newTimelinePosition = _mapOriginalToTimeline(currentOriginal);
+      if (newTimelinePosition != _currentPlaybackPosition) {
+        _currentPlaybackPosition = newTimelinePosition;
+        widget.onPositionChanged(newTimelinePosition);
+      }
+    });
+
+    _chewieController = ChewieController(
+      videoPlayerController: _controller!,
+      autoPlay: false,
+      looping: false,
+      showControls: true,
+      materialProgressColors: ChewieProgressColors(
+        playedColor: Colors.orange,
+        handleColor: Colors.orange,
+        backgroundColor: Colors.grey,
+        bufferedColor: Colors.grey[700]!,
+      ),
+      showControlsOnInitialize: true,
+    );
+
+    _isInitializing = false;
+    setState(() {});
+    
+    if (widget.cursorPosition > 0) {
+      _seekToTimelinePosition(widget.cursorPosition);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
       child: GestureDetector(
-        onTap: videoPath == null ? onTap : null,
+        onTap: widget.videoPath == null ? widget.onTap : null,
         child: DropTarget(
-          onDragEntered: (_) => onDragEntered(),
-          onDragExited: (_) => onDragExited(),
-          onDragDone: onDragDone,
+          onDragEntered: (_) => widget.onDragEntered(),
+          onDragExited: (_) => widget.onDragExited(),
+          onDragDone: widget.onDragDone,
           child: Container(
             width: double.infinity,
             height: double.infinity,
             color: Colors.black,
-            child: videoPath == null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          isDragging ? Icons.file_upload : Icons.video_library,
-                          size: 64,
-                          color: isDragging ? Colors.orange : Colors.grey,
+            child: widget.videoPath == null
+                ? _buildPlaceholder()
+                : _isInitializing
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text('Загрузка видео...', style: TextStyle(color: Colors.white)),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          isDragging ? 'Отпустите видео' : 'Нажмите или перетащите видео',
-                          style: TextStyle(
-                            color: isDragging ? Colors.orange : Colors.grey,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        if (!isDragging)
-                          const Text(
-                            'чтобы начать работу',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
-                      ],
-                    ),
-                  )
-                : Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.play_circle_filled, size: 64, color: Colors.orange),
-                        const SizedBox(height: 16),
-                        Text(
-                          _fileName,
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Плеер временно отключён',
-                          style: TextStyle(color: Colors.grey, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
+                      )
+                    : _errorMessage.isNotEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.error, size: 48, color: Colors.orange),
+                                SizedBox(height: 16),
+                                Text(_errorMessage, style: TextStyle(color: Colors.white)),
+                                SizedBox(height: 16),
+                                TextButton(
+                                  onPressed: _initializePlayer,
+                                  child: Text('Повторить', style: TextStyle(color: Colors.orange)),
+                                ),
+                              ],
+                            ),
+                          )
+                        : _chewieController == null || !_chewieController!.videoPlayerController.value.isInitialized
+                            ? const Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.error, size: 48, color: Colors.orange),
+                                    SizedBox(height: 16),
+                                    Text('Не удалось загрузить видео', style: TextStyle(color: Colors.white)),
+                                  ],
+                                ),
+                              )
+                            : Chewie(controller: _chewieController!),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            widget.isDragging ? Icons.file_upload : Icons.video_library,
+            size: 64,
+            color: widget.isDragging ? Colors.orange : Colors.grey,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            widget.isDragging ? 'Отпустите видео' : 'Нажмите или перетащите видео',
+            style: TextStyle(
+              color: widget.isDragging ? Colors.orange : Colors.grey,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (!widget.isDragging)
+            const Text(
+              'чтобы начать работу',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+        ],
+      ),
+    );
+  }
+} 
+ 
+======================================== 
+FILE: D:\SoViCut\lib\short_clips_dialog.dart 
+======================================== 
+ 
+import 'package:flutter/material.dart';
+import 'export_strategy.dart';
+import 'concat_strategy.dart';
+import 'transcode_strategy.dart';
+
+class ShortClipsDialog extends StatelessWidget {
+  final ShortClipCheckResult checkResult;
+  final Function(ExportStrategy) onStrategySelected;
+  final VoidCallback onCancel;
+
+  const ShortClipsDialog({
+    super.key,
+    required this.checkResult,
+    required this.onStrategySelected,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.warning_amber, color: Colors.orange),
+          SizedBox(width: 8),
+          Text('Обнаружены короткие фрагменты'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(checkResult.getWarningMessage()),
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 8),
+          const Text(
+            'Выберите способ обработки:',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: onCancel,
+          child: const Text('Отмена экспорта'),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => onStrategySelected(ConcatStrategy()),
+          icon: const Icon(Icons.speed),
+          label: const Text('Округление до ключевых кадров (быстро)'),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => onStrategySelected(TranscodeStrategy()),
+          icon: const Icon(Icons.build),  // ← заменил Icons.quality на Icons.build
+          label: const Text('Перекодировать (медленно, но надёжно)'),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
+        ),
+      ],
     );
   }
 } 
@@ -1906,6 +2591,7 @@ class TimelineWidget extends StatefulWidget {
   final Function(int) onRestore;
   final Function(int, double) onSelectClip;
   final Function(double) onCursorMoved;
+  final double externalCursorPosition;
   
   const TimelineWidget({
     super.key,
@@ -1915,6 +2601,7 @@ class TimelineWidget extends StatefulWidget {
     required this.onRestore,
     required this.onSelectClip,
     required this.onCursorMoved,
+    required this.externalCursorPosition,
   });
 
   @override
@@ -1928,6 +2615,22 @@ class _TimelineWidgetState extends State<TimelineWidget> {
   
   double get totalDuration {
     return widget.clips.fold(0.0, (sum, clip) => sum + clip.duration);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _cursorPosition = widget.externalCursorPosition;
+  }
+
+  @override
+  void didUpdateWidget(TimelineWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.externalCursorPosition != oldWidget.externalCursorPosition) {
+      setState(() {
+        _cursorPosition = widget.externalCursorPosition;
+      });
+    }
   }
   
   String formatDuration(double seconds) {
@@ -2257,6 +2960,377 @@ class ToolPanel extends StatelessWidget {
 } 
  
 ======================================== 
+FILE: D:\SoViCut\lib\transcode_strategy.dart 
+======================================== 
+ 
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'audio_track.dart';
+import 'clip.dart';
+import 'export_settings_tab.dart';
+import 'export_strategy.dart';
+
+class TranscodeStrategy implements ExportStrategy {
+  @override
+  String get name => 'Полное перекодирование (медленно, но качественно)';
+
+  static const double SHORT_CLIP_THRESHOLD = 0.5;
+
+  Future<bool> _isShortClip(Clip clip) async {
+    return clip.duration < SHORT_CLIP_THRESHOLD;
+  }
+
+  /// Получает оригинальные названия аудиодорожек из видео
+  Future<List<String>> _getAudioTrackTitles(String videoPath) async {
+    final result = await Process.run(
+      'ffprobe',
+      [
+        '-v', 'error',
+        '-show_entries', 'stream=index,codec_type,tags',
+        '-of', 'default=noprint_wrappers=1',
+        videoPath
+      ],
+      runInShell: true,
+    );
+
+    final List<String> titles = [];
+    final lines = result.stdout.toString().split('\n');
+    String? currentTitle;
+    int currentIndex = -1;
+
+    for (final line in lines) {
+      if (line.startsWith('index=')) {
+        currentIndex = int.parse(line.split('=')[1]);
+      } else if (line.startsWith('codec_type=audio')) {
+        // Начинаем новую аудиодорожку
+      } else if (line.startsWith('TAG:title=')) {
+        currentTitle = line.split('=').sublist(1).join('=');
+      } else if (line.startsWith('TAG:language=')) {
+        // Пока не используем
+      } else if (line.isEmpty && currentIndex >= 0) {
+        while (titles.length <= currentIndex) {
+          titles.add('');
+        }
+        titles[currentIndex] = currentTitle ?? 'Дорожка ${currentIndex + 1}';
+        currentTitle = null;
+      }
+    }
+
+    // Заполняем недостающие
+    for (int i = 0; i < titles.length; i++) {
+      if (titles[i].isEmpty) {
+        titles[i] = 'Дорожка ${i + 1}';
+      }
+    }
+
+    print('Оригинальные названия аудиодорожек: $titles');
+    return titles;
+  }
+
+  Future<String> _transcodeClip({
+    required String inputPath,
+    required Clip clip,
+    required List<AudioTrack> audioTracks,
+    required bool mixAudio,
+    required bool needAudioReencode,
+    required int targetAudioBitrate,
+    required String targetAudioCodec,
+    required int targetSampleRate,
+    required int targetChannels,
+    required String videoCodec,
+    required int crf,
+    required bool copyVideo,
+    required ExportSettings? exportSettings,
+    required List<String> originalTrackTitles,
+  }) async {
+    final tempPath = '${(await getTemporaryDirectory()).path}\\sovicut_transcoded_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    
+    final List<String> args = [];
+    
+    args.addAll(['-i', inputPath]);
+    args.addAll(['-ss', clip.startTime.toStringAsFixed(6)]);
+    args.addAll(['-t', clip.duration.toStringAsFixed(6)]);
+    
+    args.addAll(['-map', '0:v:0']);
+    args.addAll(['-c:v', videoCodec]);
+    args.addAll(['-crf', crf.toString()]);
+    args.addAll(['-g', '6']);
+    args.addAll(['-keyint_min', '6']);
+    
+    final enabledIndices = <int>[];
+    for (int i = 0; i < audioTracks.length; i++) {
+      if (audioTracks[i].isEnabled) {
+        enabledIndices.add(i);
+      }
+    }
+    
+    print('Перекодирование фрагмента ${clip.duration.toStringAsFixed(3)} сек');
+    print('Активных аудиодорожек (по настройкам): ${enabledIndices.length}');
+    print('needAudioReencode: $needAudioReencode, mixAudio: $mixAudio');
+    
+    if (!needAudioReencode) {
+      final int audioCount = await _getAudioStreamCount(inputPath);
+      print('Копирование ВСЕХ оригинальных аудиодорожек: $audioCount');
+      for (int i = 0; i < audioCount; i++) {
+        args.addAll(['-map', '0:a:$i']);
+        // Сохраняем оригинальное название
+        if (i < originalTrackTitles.length && originalTrackTitles[i].isNotEmpty) {
+          args.addAll(['-metadata:s:a:$i', 'title=${originalTrackTitles[i]}']);
+        }
+      }
+      args.addAll(['-c:a', 'copy']);
+    } else if (enabledIndices.isEmpty) {
+      final int audioCount = await _getAudioStreamCount(inputPath);
+      print('Аудио-панель включена, но нет выбранных дорожек. Копируем все: $audioCount');
+      for (int i = 0; i < audioCount; i++) {
+        args.addAll(['-map', '0:a:$i']);
+        if (i < originalTrackTitles.length && originalTrackTitles[i].isNotEmpty) {
+          args.addAll(['-metadata:s:a:$i', 'title=${originalTrackTitles[i]}']);
+        }
+      }
+      args.addAll(['-c:a', 'copy']);
+    } else {
+      print('Обработка выбранных аудиодорожек: ${enabledIndices.length}');
+      final List<String> audioFilters = [];
+      final List<String> audioMaps = [];
+      
+      if (mixAudio && enabledIndices.length > 1) {
+        final List<String> filterParts = [];
+        final List<String> mixInputs = [];
+        for (int i = 0; i < enabledIndices.length; i++) {
+          final track = audioTracks[enabledIndices[i]];
+          final factor = track.volumePercent / 100;
+          if (factor != 1.0) {
+            filterParts.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
+            mixInputs.add('[a$i]');
+          } else {
+            mixInputs.add('[0:a:${track.index}]');
+          }
+        }
+        if (filterParts.isNotEmpty) {
+          audioFilters.add(filterParts.join('; '));
+        }
+        audioFilters.add('${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]');
+        audioMaps.addAll(['-map', '[aout]']);
+        // Для смешанной дорожки даём общее название
+        args.addAll(['-metadata:s:a:0', 'title=Mixed Audio']);
+        print('Режим: объединение дорожек');
+      } else {
+        for (int i = 0; i < enabledIndices.length; i++) {
+          final track = audioTracks[enabledIndices[i]];
+          final factor = track.volumePercent / 100;
+          if (factor != 1.0) {
+            audioFilters.add('[0:a:${track.index}]volume=${factor.toStringAsFixed(2)}[a$i]');
+            audioMaps.addAll(['-map', '[a$i]']);
+          } else {
+            audioMaps.addAll(['-map', '0:a:${track.index}']);
+          }
+          // Сохраняем оригинальное название для выбранной дорожки
+          if (track.index < originalTrackTitles.length && originalTrackTitles[track.index].isNotEmpty) {
+            args.addAll(['-metadata:s:a:$i', 'title=${originalTrackTitles[track.index]}']);
+          }
+        }
+        print('Режим: раздельные дорожки');
+      }
+      
+      if (audioFilters.isNotEmpty) {
+        args.addAll(['-filter_complex', audioFilters.join('; ')]);
+      }
+      args.addAll(audioMaps);
+      args.addAll(['-c:a', targetAudioCodec, '-b:a', '${targetAudioBitrate}k']);
+      if (exportSettings != null && exportSettings.bitrateMode == BitrateMode.vbr) {
+        args.addAll(['-q:a', '2']);
+      }
+      args.addAll(['-ar', targetSampleRate.toString()]);
+      args.addAll(['-ac', targetChannels.toString()]);
+    }
+    
+    args.addAll(['-y', tempPath]);
+    
+    print('Команда перекодирования: ffmpeg ${args.join(' ')}');
+    
+    final result = await Process.run('ffmpeg', args, runInShell: true);
+    if (result.exitCode != 0) {
+      print('STDERR: ${result.stderr}');
+      throw Exception('Ошибка перекодирования фрагмента: ${result.stderr}');
+    }
+    
+    return tempPath;
+  }
+
+  @override
+  Future<bool> export({
+    required String inputPath,
+    required String outputPath,
+    required List<AudioTrack> audioTracks,
+    required bool mixAudio,
+    double? trimSeconds,
+    int? trimMode,
+    required List<Clip> clips,
+    ExportSettings? exportSettings,
+  }) async {
+    final List<String> args = [];
+    final List<String> tempFiles = [];
+    
+    final bool needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
+    
+    final int originalBitrateValue = await _getAudioBitrate(inputPath);
+    final bool useCustomSettings = exportSettings != null && 
+        (exportSettings.audioBitrate != (originalBitrateValue ~/ 1000) ||
+         exportSettings.audioCodec != AudioCodec.aac ||
+         exportSettings.bitrateMode != BitrateMode.cbr ||
+         exportSettings.sampleRate != 48000 ||
+         exportSettings.channels != 2 ||
+         exportSettings.videoQuality != VideoQuality.source);
+    
+    int targetAudioBitrate;
+    String targetAudioCodec;
+    int targetSampleRate;
+    int targetChannels;
+    String videoCodec;
+    int crf;
+    bool copyVideo = true;
+    
+    if (useCustomSettings && exportSettings != null) {
+      targetAudioBitrate = exportSettings.audioBitrate;
+      targetAudioCodec = exportSettings.audioCodecName;
+      targetSampleRate = exportSettings.sampleRate;
+      targetChannels = exportSettings.channels;
+      videoCodec = exportSettings.videoCodecName;
+      crf = exportSettings.crf;
+      copyVideo = exportSettings.videoQuality == VideoQuality.source;
+    } else {
+      targetAudioBitrate = originalBitrateValue ~/ 1000;
+      targetAudioCodec = 'aac';
+      targetSampleRate = 48000;
+      targetChannels = 2;
+      videoCodec = 'libx264';
+      crf = 23;
+      copyVideo = true;
+    }
+    
+    final activeClips = clips.where((c) => c.isVisible).toList();
+    final List<String> processedFiles = [];
+    
+    // Получаем оригинальные названия аудиодорожек один раз
+    final originalTrackTitles = await _getAudioTrackTitles(inputPath);
+    
+    print('=== ПЕРЕКОДИРОВАНИЕ ВСЕХ ФРАГМЕНТОВ ===');
+    print('Всего активных фрагментов: ${activeClips.length}');
+    
+    for (int i = 0; i < activeClips.length; i++) {
+      final clip = activeClips[i];
+      print('\n--- Обработка фрагмента ${i + 1} ---');
+      
+      final transcoded = await _transcodeClip(
+        inputPath: inputPath,
+        clip: clip,
+        audioTracks: audioTracks,
+        mixAudio: mixAudio,
+        needAudioReencode: needAudioReencode,
+        targetAudioBitrate: targetAudioBitrate,
+        targetAudioCodec: targetAudioCodec,
+        targetSampleRate: targetSampleRate,
+        targetChannels: targetChannels,
+        videoCodec: videoCodec,
+        crf: crf,
+        copyVideo: copyVideo,
+        exportSettings: exportSettings,
+        originalTrackTitles: originalTrackTitles,
+      );
+      processedFiles.add(transcoded);
+      tempFiles.add(transcoded);
+    }
+    
+    if (processedFiles.isEmpty) {
+      print('Нет активных фрагментов');
+      return false;
+    }
+    
+    print('\n=== СКЛЕЙКА ФРАГМЕНТОВ ===');
+    final concatDir = await Directory.systemTemp.createTemp('sovicut_concat_final');
+    final concatPath = '${concatDir.path}\\concat.txt';
+    final concatFile = File(concatPath);
+    final content = StringBuffer();
+    for (final file in processedFiles) {
+      content.writeln("file '$file'");
+    }
+    await concatFile.writeAsString(content.toString());
+    
+    args.addAll(['-f', 'concat', '-safe', '0', '-i', concatPath]);
+    args.addAll(['-c', 'copy']);
+    
+    if (trimSeconds != null && trimSeconds > 0 && trimMode == 0) {
+      args.addAll(['-t', trimSeconds.toStringAsFixed(2)]);
+    }
+    
+    args.addAll(['-y', outputPath]);
+    
+    print('Финальная команда: ffmpeg ${args.join(' ')}');
+    
+    final result = await Process.run('ffmpeg', args, runInShell: true);
+    
+    for (final f in tempFiles) {
+      try { await File(f).delete(); } catch (_) {}
+    }
+    try { await concatDir.delete(recursive: true); } catch (_) {}
+    
+    print('=== EXIT CODE: ${result.exitCode} ===');
+    if (result.exitCode != 0) {
+      print('=== STDERR ===');
+      print(result.stderr);
+      return false;
+    }
+    
+    return true;
+  }
+
+  static Future<int> _getAudioStreamCount(String videoPath) async {
+    final result = await Process.run(
+      'ffprobe',
+      [
+        '-v', 'error',
+        '-show_entries', 'stream=codec_type',
+        '-of', 'csv=p=0',
+        videoPath
+      ],
+      runInShell: true,
+    );
+    final lines = result.stdout.toString().trim().split('\n');
+    int count = 0;
+    for (final line in lines) {
+      if (line.contains('audio')) count++;
+    }
+    return count;
+  }
+
+  static Future<int> _getAudioBitrate(String videoPath) async {
+    try {
+      final result = await Process.run(
+        'ffprobe',
+        [
+          '-v', 'error',
+          '-show_entries', 'stream=codec_type,bit_rate',
+          '-of', 'default=noprint_wrappers=1:nokey=1',
+          videoPath
+        ],
+        runInShell: true,
+      );
+      final lines = result.stdout.toString().trim().split('\n');
+      for (int i = 0; i < lines.length; i++) {
+        if (lines[i] == 'audio' && i + 1 < lines.length) {
+          final bitrate = int.tryParse(lines[i + 1]);
+          if (bitrate != null && bitrate > 0) {
+            return bitrate;
+          }
+        }
+      }
+    } catch (e) {}
+    return 192000;
+  }
+} 
+ 
+======================================== 
 FILE: D:\SoViCut\lib\trim_tab.dart 
 ======================================== 
  
@@ -2413,6 +3487,9 @@ dependencies:
   file_picker: ^6.1.1
   desktop_drop: ^0.4.0
   win32: ^5.5.0
+  video_player: ^2.10.0
+  video_player_win: ^3.0.0
+  chewie: ^1.10.0
 
 dev_dependencies:
   flutter_test:
