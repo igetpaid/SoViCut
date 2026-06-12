@@ -95,8 +95,13 @@
     "videoCodec": "Video Codec",
     "crf": "CRF: {value} (0-51, lower = better)",
     "noReencode": "Video will be copied without re-encoding",
-    "success": "Export complete!",
-    "error": "Export error"
+    "success": "Exporting... 100%",
+    "error": "Export error",
+    "notLoaded": "Video not loaded",
+    "presets": "Presets",
+    "preparing": "Preparing...",
+    "encoding": "Exporting...",
+    "cancel": "Cancel export"
   },
 
   "batch": {

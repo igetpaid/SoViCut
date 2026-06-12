@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'audio_track.dart';
 import 'clip.dart';
 import 'export_settings_tab.dart';
 import 'export_strategy.dart';
+import 'ffmpeg_utils.dart';
 import 'media_info_service.dart';
 import 'core/localization/app_localizations.dart';
 
@@ -57,17 +59,20 @@ class ConcatStrategy implements ExportStrategy {
     int? trimMode,
     required List<Clip> clips,
     ExportSettings? exportSettings,
+    void Function(double progress, String stage)? onProgress,
+    bool Function()? isCancelled,
   }) async {
+    if (isCancelled != null && isCancelled()) return false;
+    onProgress?.call(0, AppLocalizations.t('export.preparing'));
     // 1. Получаем оригинальные названия аудиодорожек
     final allStreams = await MediaInfoService.getAudioStreams(inputPath);
     final Map<int, int> absoluteToPerType = {};
     for (int i = 0; i < allStreams.length; i++) {
       absoluteToPerType[allStreams[i].index] = i;
     }
-    print('Оригинальные названия аудиодорожек: ${allStreams.map((s) => '${s.index}: "${s.title}"').join(', ')}');
 
     // 2. Нужно ли перекодирование аудио (изменение громкости или смешивание)
-    final needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
+    final needAudioReencode = audioTracks.any((t) => t.isEnabled && t.volumePercent != 100) || (mixAudio && audioTracks.any((t) => t.isEnabled));
 
     // 3. Параметры перекодирования аудио (если потребуется)
     final int originalBitrate = await _getAudioBitrate(inputPath);
@@ -90,7 +95,7 @@ class ConcatStrategy implements ExportStrategy {
       );
     }).toList();
 
-    final activeClips = roundedClips.where((c) => c.isVisible).toList();
+    final activeClips = roundedClips;
     if (activeClips.isEmpty) return false;
 
     // 5. Создание concat-файла
@@ -120,15 +125,22 @@ class ConcatStrategy implements ExportStrategy {
     args.addAll(['-map', '0:v:0', '-c:v', 'copy']);
 
     // 8. Аудио: определяем, какие дорожки обрабатывать (0-based per-type индексы)
-    final enabledAbsolute = audioTracks
-        .where((t) => t.isEnabled)
-        .map((t) => t.index)
-        .toList();
-    final List<int> indicesToProcess = enabledAbsolute.isEmpty
-        ? List.generate(allStreams.length, (i) => i)
-        : enabledAbsolute.map((abs) => absoluteToPerType[abs]!).toList();
+    final List<int> indicesToProcess;
+    if (audioTracks.isEmpty) {
+      indicesToProcess = [];
+    } else {
+      final enabledAbsolute = audioTracks
+          .where((t) => t.isEnabled)
+          .map((t) => t.index)
+          .toList();
+      indicesToProcess = enabledAbsolute.isEmpty
+          ? List.generate(allStreams.length, (i) => i)
+          : enabledAbsolute.map((abs) => absoluteToPerType[abs]!).toList();
+    }
 
-    if (needAudioReencode && mixAudio && indicesToProcess.length > 1) {
+    if (indicesToProcess.isEmpty) {
+      // --- Аудио отключено — не добавляем ни одной дорожки ---
+    } else if (needAudioReencode && mixAudio && indicesToProcess.length > 1) {
       // --- Смешивание дорожек в одну ---
       final List<String> filterParts = [];
       final List<String> mixInputs = [];
@@ -174,11 +186,12 @@ class ConcatStrategy implements ExportStrategy {
         '-ar', targetSampleRate.toString(), '-ac', targetChannels.toString(),
       ]);
     } else {
-      // --- Копирование всех дорожек с сохранением оригинальных названий ---
-      for (int i = 0; i < allStreams.length; i++) {
-        args.addAll(['-map', '0:a:$i']);
-        if (allStreams[i].title.isNotEmpty) {
-          args.addAll(['-metadata:s:a:$i', 'title=${allStreams[i].title}']);
+      // --- Копирование только выбранных дорожек с сохранением названий ---
+      for (int j = 0; j < indicesToProcess.length; j++) {
+        final perTypeIdx = indicesToProcess[j];
+        args.addAll(['-map', '0:a:$perTypeIdx']);
+        if (allStreams[perTypeIdx].title.isNotEmpty) {
+          args.addAll(['-metadata:s:a:$j', 'title=${allStreams[perTypeIdx].title}']);
         }
       }
       args.addAll(['-c:a', 'copy']);
@@ -187,19 +200,30 @@ class ConcatStrategy implements ExportStrategy {
     // 9. Флаги совместимости и быстрого открытия
     args.addAll(['-movflags', '+faststart', '-y', outputPath]);
 
-    print('=== СТРАТЕГИЯ: ${name} ===');
-    print('ffmpeg ${args.join(' ')}');
-    final result = await Process.run('ffmpeg', args, runInShell: true);
+    // 10. Запуск с прогрессом
+    final double totalDuration = activeClips.fold(0.0, (sum, c) => sum + c.duration);
+    if (isCancelled != null && isCancelled()) {
+      try { await concatDir.delete(recursive: true); } catch (_) {}
+      return false;
+    }
+    onProgress?.call(0, AppLocalizations.t('export.encoding'));
+    final cancelNotifier = ValueNotifier(false);
+    final exitCode = await FFmpegUtils.runWithProgress(
+      args: args,
+      totalDuration: totalDuration,
+      onProgress: (p) => onProgress?.call(p, AppLocalizations.t('export.encoding')),
+      cancel: cancelNotifier,
+    );
 
-    // 10. Очистка
+    // 11. Очистка
     try { await concatDir.delete(recursive: true); } catch (_) {}
 
-    if (result.exitCode != 0) {
-      print('Ошибка: ${result.stderr}');
+    if (exitCode != 0) {
+      print('Ошибка ffmpeg, код: $exitCode');
       return false;
     }
 
-    print('✅ Экспорт успешен: $outputPath');
+    onProgress?.call(1, AppLocalizations.t('export.success'));
     return true;
   }
 

@@ -25,6 +25,8 @@ class ToolPanel extends StatelessWidget {
   final String? videoPath;
   final Function(int) onDeleteClip;
   final Function(int) onRestoreClip;
+  final Function(int)? onSelectClip;
+  final int? selectedClipIndex;
   
   final int originalAudioBitrate;
   final int originalSampleRate;
@@ -48,6 +50,8 @@ class ToolPanel extends StatelessWidget {
     required this.videoPath,
     required this.onDeleteClip,
     required this.onRestoreClip,
+    this.onSelectClip,
+    this.selectedClipIndex,
     required this.originalAudioBitrate,
     required this.originalSampleRate,
     required this.originalChannels,
@@ -96,6 +100,8 @@ class ToolPanel extends StatelessWidget {
                     clips: clips,
                     onDelete: onDeleteClip,
                     onRestore: onRestoreClip,
+                    onSelect: onSelectClip,
+                    selectedIndex: selectedClipIndex,
                   ),
                   ExportSettingsTab(
                     videoPath: videoPath,

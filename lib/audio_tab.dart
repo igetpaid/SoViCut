@@ -229,6 +229,8 @@ class _AudioTabState extends State<AudioTab> {
 
   Widget _buildVolumeControl(AudioTrack track, int index) {
     final db = track.volumeDb;
+    final absMin = track.originalVolume - 60;
+    final absMax = track.originalVolume + 12;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
       child: Column(
@@ -261,6 +263,39 @@ class _AudioTabState extends State<AudioTab> {
                 child: Text(
                   '${db.toStringAsFixed(1)} dB',
                   style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Icon(Icons.volume_down, size: 14, color: AppColors.textDim.withValues(alpha: 0.4)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                  ),
+                  child: Slider(
+                    value: track.finalVolumeDb.clamp(absMin, absMax),
+                    min: absMin,
+                    max: absMax,
+                    divisions: 720,
+                    activeColor: AppColors.accent.withValues(alpha: 0.35),
+                    onChanged: (val) => _changeVolumeAbsolute(index, val),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 52,
+                child: Text(
+                  '${track.finalVolumeDb.toStringAsFixed(1)} dB',
+                  style: TextStyle(fontSize: 10, color: AppColors.textDim),
                   textAlign: TextAlign.right,
                 ),
               ),
@@ -347,6 +382,13 @@ class _AudioTabState extends State<AudioTab> {
   void _changeVolume(int index, double db) {
     setState(() {
       widget.tracks[index].volumeDb = db;
+    });
+    widget.onTracksChanged(widget.tracks);
+  }
+
+  void _changeVolumeAbsolute(int index, double absoluteDb) {
+    setState(() {
+      widget.tracks[index].volumeDb = absoluteDb - widget.tracks[index].originalVolume;
     });
     widget.onTracksChanged(widget.tracks);
   }

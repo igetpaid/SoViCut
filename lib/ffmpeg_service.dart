@@ -221,15 +221,26 @@ class FFmpegService {
           for (final idx in videoIndices) {
             tempArgs.addAll(['-map', '0:v:$idx']);
           }
-          for (int idx = 0; idx < audioCount; idx++) {
-            tempArgs.addAll(['-map', '0:a:$idx']);
-            final stream = originalAudioStreams[idx];
-            if (stream.title.isNotEmpty) {
-              tempArgs.addAll(['-metadata:s:a:$idx', 'title=${stream.title}']);
+          final enabledTracks = audioTracks.where((t) => t.isEnabled).toList();
+          if (enabledTracks.isNotEmpty) {
+            int outputIdx = 0;
+            for (final track in enabledTracks) {
+              final int perTypeIdx = absoluteToPerType[track.index]!;
+              tempArgs.addAll(['-map', '0:a:$perTypeIdx']);
+              final stream = originalAudioStreams.firstWhere(
+                (s) => s.index == track.index,
+                orElse: () => AudioStreamInfo(index: track.index, title: '', codec: '', bitrate: 0, sampleRate: 0, channels: 0, language: '', isDefault: false, isForced: false),
+              );
+              if (stream.title.isNotEmpty) {
+                tempArgs.addAll(['-metadata:s:a:$outputIdx', 'title=${stream.title}']);
+              }
+              outputIdx++;
             }
+            tempArgs.addAll(['-c:v', 'copy', '-c:a', 'copy']);
+          } else {
+            tempArgs.addAll(['-c:v', 'copy', '-an']);
           }
-          tempArgs.addAll(['-c:v', 'copy', '-c:a', 'copy']);
-          print('Фрагмент ${i+1}: копирование всех $audioCount аудиопотоков');
+          print('Фрагмент ${i+1}: копирование включённых аудиопотоков');
         } else {
           tempArgs.addAll(['-map', '0:v:0']);
           if (copyVideo) {
@@ -417,15 +428,26 @@ class FFmpegService {
         for (final idx in videoIndices) {
           args.addAll(['-map', '0:v:$idx']);
         }
-        for (int idx = 0; idx < audioCount; idx++) {
-          args.addAll(['-map', '0:a:$idx']);
-          final stream = originalAudioStreams[idx];
-          if (stream.title.isNotEmpty) {
-            args.addAll(['-metadata:s:a:$idx', 'title=${stream.title}']);
+        final enabledTracks = audioTracks.where((t) => t.isEnabled).toList();
+        if (enabledTracks.isNotEmpty) {
+          int outputIdx = 0;
+          for (final track in enabledTracks) {
+            final int perTypeIdx = absoluteToPerType[track.index]!;
+            args.addAll(['-map', '0:a:$perTypeIdx']);
+            final stream = originalAudioStreams.firstWhere(
+              (s) => s.index == track.index,
+              orElse: () => AudioStreamInfo(index: track.index, title: '', codec: '', bitrate: 0, sampleRate: 0, channels: 0, language: '', isDefault: false, isForced: false),
+            );
+            if (stream.title.isNotEmpty) {
+              args.addAll(['-metadata:s:a:$outputIdx', 'title=${stream.title}']);
+            }
+            outputIdx++;
           }
+          args.addAll(['-c:v', 'copy', '-c:a', 'copy']);
+        } else {
+          args.addAll(['-c:v', 'copy', '-an']);
         }
-        args.addAll(['-c:v', 'copy', '-c:a', 'copy']);
-        print('Копирование всех $audioCount аудиопотоков');
+        print('Копирование включённых аудиопотоков');
       } else {
         args.addAll(['-map', '0:v:0']);
         if (copyVideo) {

@@ -156,7 +156,6 @@ class BatchScreen extends ConsumerWidget {
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
-            onTap: () {},
           ),
         );
       },

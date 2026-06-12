@@ -13,6 +13,7 @@ class TimelineBar extends StatefulWidget {
   final bool isPlaying;
   final VoidCallback? onPlayPause;
   final ValueChanged<double> onSeek;
+  final ValueChanged<int>? onSelectClip;
   final List<ThumbnailEntry> thumbnails;
 
   const TimelineBar({
@@ -25,6 +26,7 @@ class TimelineBar extends StatefulWidget {
     this.isPlaying = false,
     this.onPlayPause,
     required this.onSeek,
+    this.onSelectClip,
     this.thumbnails = const [],
   });
 
@@ -68,8 +70,8 @@ class _TimelineBarState extends State<TimelineBar> {
         height: 100,
         child: CompositedTransformFollower(
           link: _layerLink,
-          targetAnchor: Alignment.bottomCenter,
-          followerAnchor: Alignment.topCenter,
+          targetAnchor: Alignment.topCenter,
+          followerAnchor: Alignment.bottomCenter,
           child: Container(
             decoration: BoxDecoration(
               color: AppColors.bgCard,
@@ -176,6 +178,7 @@ class _TimelineBarState extends State<TimelineBar> {
               final ratio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
               _showThumbnail(ratio);
               widget.onSeek(ratio * widget.totalDuration);
+              _selectClipAtRatio(ratio);
             },
             onHorizontalDragStart: (details) {
               final ratio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
@@ -200,6 +203,11 @@ class _TimelineBarState extends State<TimelineBar> {
                     cursorPosition: widget.cursorPosition,
                     clips: widget.clips,
                     totalDuration: widget.totalDuration,
+                    onDragStart: widget.selectedClipIndex != null
+                        ? (edge) => _onDragHandleStart(edge, constraints.maxWidth)
+                        : null,
+                    onDragUpdate: (dx) => _onDragHandleUpdate(dx, constraints.maxWidth),
+                    onDragEnd: () => _onDragHandleEnd(),
                   ),
                 ),
               ),
@@ -208,6 +216,45 @@ class _TimelineBarState extends State<TimelineBar> {
         },
       ),
     );
+  }
+
+  void _selectClipAtRatio(double ratio) {
+    if (widget.onSelectClip == null) return;
+    double totalAccumulated = 0;
+    for (int i = 0; i < widget.clips.length; i++) {
+      final clipStart = totalAccumulated / widget.totalDuration;
+      final clipEnd = (totalAccumulated + widget.clips[i].duration) / widget.totalDuration;
+      if (ratio >= clipStart && ratio < clipEnd) {
+        widget.onSelectClip!(i);
+        return;
+      }
+      totalAccumulated += widget.clips[i].duration;
+    }
+  }
+
+  bool _isDraggingEdge = false;
+  int _dragEdgeIndex = -1;
+  bool _isDragStartEdge = false; // true = start edge, false = end edge
+
+  void _onDragHandleStart(bool isStartEdge, double totalWidth) {
+    _isDraggingEdge = true;
+    _dragEdgeIndex = widget.selectedClipIndex ?? -1;
+    _isDragStartEdge = isStartEdge;
+  }
+
+  void _onDragHandleUpdate(double dx, double totalWidth) {
+    if (!_isDraggingEdge || _dragEdgeIndex < 0 || _dragEdgeIndex >= widget.clips.length) return;
+    final deltaSec = (dx / totalWidth) * widget.totalDuration;
+    final clip = widget.clips[_dragEdgeIndex];
+    if (_isDragStartEdge) {
+      clip.startTime = (clip.startTime + deltaSec).clamp(0.0, clip.endTime - 0.1);
+    } else {
+      clip.endTime = (clip.endTime + deltaSec).clamp(clip.startTime + 0.1, 1e10);
+    }
+  }
+
+  void _onDragHandleEnd() {
+    _isDraggingEdge = false;
   }
 
   String _formatTime(double seconds) {
@@ -223,11 +270,17 @@ class _ScrubBarPainter extends CustomPainter {
   final double cursorPosition;
   final List<Clip> clips;
   final double totalDuration;
+  final void Function(bool isStartEdge)? onDragStart;
+  final void Function(double dx)? onDragUpdate;
+  final VoidCallback? onDragEnd;
 
   _ScrubBarPainter({
     required this.cursorPosition,
     required this.clips,
     required this.totalDuration,
+    this.onDragStart,
+    this.onDragUpdate,
+    this.onDragEnd,
   });
 
   @override
@@ -240,19 +293,33 @@ class _ScrubBarPainter extends CustomPainter {
       bgPaint,
     );
 
-    double visibleAccumulated = 0;
-    for (final clip in clips) {
-      if (!clip.isVisible) continue;
+    double totalAccumulated = 0;
+    for (int i = 0; i < clips.length; i++) {
+      final clip = clips[i];
       final clipWidth = (clip.duration / totalDuration) * size.width;
-      final paint = Paint()..color = AppColors.accent.withOpacity(0.7);
+      final x = totalAccumulated / totalDuration * size.width;
+      final paint = Paint()
+        ..color = clip.isVisible
+            ? AppColors.accent.withValues(alpha: 0.7)
+            : AppColors.textDim.withValues(alpha: 0.3);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(visibleAccumulated / totalDuration * size.width, 0, clipWidth, size.height),
+          Rect.fromLTWH(x, 0, clipWidth, size.height),
           const Radius.circular(2),
         ),
         paint,
       );
-      visibleAccumulated += clip.duration;
+
+      // Draw clip edge dividers
+      if (i < clips.length - 1) {
+        final rightX = x + clipWidth;
+        final dividerPaint = Paint()
+          ..color = AppColors.textDim.withValues(alpha: 0.4)
+          ..strokeWidth = 1;
+        canvas.drawLine(Offset(rightX, 2), Offset(rightX, size.height - 2), dividerPaint);
+      }
+
+      totalAccumulated += clip.duration;
     }
 
     final cursorX = cursorPosition * size.width;

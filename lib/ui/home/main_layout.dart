@@ -47,7 +47,7 @@ class MainLayout extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppColors.border),
                       ),
-                      clipBehavior: Clip.antiAlias,
+                      clipBehavior: Clip.hardEdge,
                       child: rightPanel,
                     ),
                   ),

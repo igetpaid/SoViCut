@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:path_provider/path_provider.dart';
@@ -21,6 +22,8 @@ import 'ui/home/main_layout.dart';
 import 'ui/preview/custom_player.dart';
 import 'ui/timeline/timeline_bar.dart';
 import 'core/localization/app_localizations.dart';
+import 'core/theme/app_colors.dart';
+import 'ui/batch/batch_screen.dart';
 import 'providers/audio_provider.dart';
 import 'providers/video_provider.dart';
 import 'providers/clips_provider.dart';
@@ -61,12 +64,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int? _selectedClipIndex;
   AppMode _appMode = AppMode.single;
   List<ThumbnailEntry> _thumbnailEntries = [];
+  final FocusNode _hotkeyNode = FocusNode();
+
+  // Export progress (non-blocking)
+  bool _isExporting = false;
+  double _exportProgress = 0;
+  String _exportStage = '';
+  bool _exportCancelled = false;
 
   @override
   void initState() {
     super.initState();
     _checkFfmpeg();
     _syncFromProviders();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _hotkeyNode.requestFocus());
+  }
+
+  @override
+  void dispose() {
+    _hotkeyNode.dispose();
+    super.dispose();
   }
 
   void _syncFromProviders() {
@@ -120,9 +137,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   double _getTotalDuration() {
     double total = 0;
     for (final clip in _clips) {
-      if (clip.isVisible) {
-        total += clip.duration;
-      }
+      total += clip.duration;
     }
     return total;
   }
@@ -136,48 +151,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     if (_videoController != null) {
-      _videoController!.seekTo(_visibleTimeToFullTime(timeInSeconds));
+      _videoController!.seekTo(_fullTimeToVideoTime(timeInSeconds));
     }
   }
 
-  /// Преобразует время в видимой временной шкале в абсолютное время видео
-  Duration _visibleTimeToFullTime(double visibleSeconds) {
-    double accumulatedVisible = 0;
+  /// Преобразует абсолютное время полной шкалы в абсолютное время видео.
+  /// Если позиция попадает в скрытый фрагмент, перескакивает на начало следующего видимого.
+  Duration _fullTimeToVideoTime(double fullSeconds) {
     for (final clip in _clips) {
-      if (!clip.isVisible) continue;
-      final clipDur = clip.duration;
-      if (visibleSeconds <= accumulatedVisible + clipDur) {
-        final offsetInClip = visibleSeconds - accumulatedVisible;
-        return Duration(
-          milliseconds: ((clip.startTime + offsetInClip) * 1000).toInt(),
-        );
+      if (fullSeconds >= clip.startTime && fullSeconds <= clip.endTime) {
+        if (clip.isVisible) {
+          return Duration(milliseconds: (fullSeconds * 1000).toInt());
+        }
+        // Hidden clip — skip to next visible
+        for (final nextClip in _clips) {
+          if (nextClip.startTime > clip.endTime && nextClip.isVisible) {
+            return Duration(milliseconds: (nextClip.startTime * 1000).toInt());
+          }
+        }
+        // No more visible clips — jump to end
+        return Duration(milliseconds: (clip.endTime * 1000).toInt());
       }
-      accumulatedVisible += clipDur;
     }
-    // За пределами — последняя видимая точка
-    final lastVisible = _clips.lastWhere(
-      (c) => c.isVisible,
-      orElse: () => _clips.last,
-    );
-    return Duration(milliseconds: (lastVisible.endTime * 1000).toInt());
+    return Duration.zero;
   }
 
-  /// Преобразует долю полного видео в долю видимой временной шкалы
-  double _fullFractionToVisible(double fullFraction) {
-    final fullMs = _videoController!.value.duration.inMilliseconds;
-    final fullSec = (fullFraction * fullMs) / 1000.0;
-    double visibleSec = 0;
-    for (final clip in _clips) {
-      if (!clip.isVisible) continue;
-      if (fullSec >= clip.startTime && fullSec <= clip.endTime) {
-        visibleSec += (fullSec - clip.startTime);
-        final visTotal = _getTotalDuration();
-        return visTotal > 0 ? visibleSec / visTotal : 0;
-      }
-      visibleSec += clip.duration;
-    }
-    return _previewPosition;
-  }
+  /// Преобразует долю полного видео в абсолютное время для плеера.
 
   /// Проверяет наличие коротких фрагментов (< 0.5 сек)
   ShortClipCheckResult _checkShortClips() {
@@ -200,9 +199,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _exportWithStrategy(ExportStrategy strategy) async {
     if (_videoPath == null) return;
-    
-    setState(() => _isLoading = true);
-    
+
+    setState(() {
+      _isExporting = true;
+      _exportProgress = 0;
+      _exportStage = AppLocalizations.t('export.preparing');
+    });
+
     final dir = await getDownloadsDirectory();
     final originalFileName = _videoPath!.split('\\').last;
     final nameWithoutExt = originalFileName.lastIndexOf('.') != -1
@@ -210,7 +213,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : originalFileName;
     final baseName = nameWithoutExt;
     final outPath = await _getUniqueFilePath(dir!.path, baseName);
-    
+
     final success = await strategy.export(
       inputPath: _videoPath!,
       outputPath: outPath,
@@ -220,14 +223,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       trimMode: _trimMode,
       clips: _clips,
       exportSettings: _exportSettings,
+      isCancelled: () => _exportCancelled,
+      onProgress: (p, s) {
+        if (!mounted) return;
+        setState(() {
+          _exportProgress = p;
+          _exportStage = s;
+        });
+      },
     );
-    
+
     if (!mounted) return;
-    setState(() => _isLoading = false);
+    setState(() {
+      _isExporting = false;
+    });
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(success ? '${AppLocalizations.t('export.success')}\n$outPath' : AppLocalizations.t('export.error'))),
     );
+  }
+
+  void _cancelExport() {
+    setState(() {
+      _exportCancelled = true;
+      _isExporting = false;
+      _exportProgress = 0;
+    });
   }
 
   Future<void> _export() async {
@@ -348,7 +369,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (controller.value.duration.inMilliseconds > 0) {
           final fullFraction = controller.value.position.inMilliseconds /
               controller.value.duration.inMilliseconds;
-          _previewPosition = _fullFractionToVisible(fullFraction);
+          _previewPosition = fullFraction;
         }
       });
     });
@@ -416,6 +437,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return AudioInfo(bitrate: bitrate, sampleRate: sampleRate, channels: channels);
   }
 
+  void _splitCurrentClip() {
+    // Find the visible clip at the current position
+    double accum = 0;
+    for (int i = 0; i < _clips.length; i++) {
+      final clip = _clips[i];
+      if (!clip.isVisible) continue;
+      final clipEnd = accum + clip.duration;
+      final currentTime = _previewPosition * _getTotalDuration();
+      if (currentTime >= accum && currentTime <= clipEnd) {
+        final splitTimeInClip = currentTime - accum;
+        if (splitTimeInClip < 0.1 || clip.duration - splitTimeInClip < 0.1) return; // too close to edge
+        setState(() {
+          final newClip = Clip(
+            id: _nextClipId,
+            sourcePath: clip.sourcePath,
+            startTime: clip.startTime + splitTimeInClip,
+            endTime: clip.endTime,
+            isVisible: true,
+          );
+          clip.endTime = clip.startTime + splitTimeInClip;
+          _clips.insert(i + 1, newClip);
+          _nextClipId++;
+        });
+        return;
+      }
+      accum += clip.duration;
+    }
+  }
+
+  int _nextClipId = 1;
+
   void _deleteClip(int clipIndex) {
     if (clipIndex < 0 || clipIndex >= _clips.length) return;
     setState(() {
@@ -471,12 +523,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  static const List<double> _stepSizes = [1 / 30, 0.1, 0.5, 1, 5, 10];
+  double _seekStepSize = 1.0;
+
+  void _onSeekStep(bool forward) {
+    final step = forward ? _seekStepSize : -_seekStepSize;
+    final total = _getTotalDuration();
+    final newTime = ((_previewPosition * total) + step).clamp(0.0, total);
+    _onTimelineCursorMoved(newTime);
+  }
+
   @override
   Widget build(BuildContext context) {
     final fileName = _videoPath?.split('\\').last.split('/').last;
+    final total = _getTotalDuration();
 
-    return MainLayout(
-      toolbar: Toolbar(
+    return Listener(
+      onPointerDown: (_) => _hotkeyNode.requestFocus(),
+      child: Focus(
+        focusNode: _hotkeyNode,
+      child: CallbackShortcuts(
+        bindings: {
+          SingleActivator(LogicalKeyboardKey.keyS): _clips.isNotEmpty ? _splitCurrentClip : () {},
+          SingleActivator(LogicalKeyboardKey.keyD): () {
+            if (_selectedClipIndex != null && _selectedClipIndex! < _clips.length) {
+              _deleteClip(_selectedClipIndex!);
+            }
+          },
+          SingleActivator(LogicalKeyboardKey.keyA): () {
+            if (_selectedClipIndex != null && _selectedClipIndex! < _clips.length) {
+              _restoreClip(_selectedClipIndex!);
+            }
+          },
+          SingleActivator(LogicalKeyboardKey.arrowRight): () => _onSeekStep(true),
+          SingleActivator(LogicalKeyboardKey.arrowLeft): () => _onSeekStep(false),
+        },
+        child: _appMode == AppMode.batch
+            ? Scaffold(body: BatchScreen())
+            : Column(
+          children: [
+            Expanded(
+              child: MainLayout(
+                toolbar: Toolbar(
         currentMode: _appMode,
         onModeChanged: (mode) => setState(() => _appMode = mode),
         currentFileName: fileName,
@@ -517,6 +605,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         videoPath: _videoPath,
         onDeleteClip: _deleteClip,
         onRestoreClip: _restoreClip,
+        onSelectClip: (index) => setState(() => _selectedClipIndex = index),
+        selectedClipIndex: _selectedClipIndex,
         originalAudioBitrate: _originalAudioBitrate,
         originalSampleRate: _originalSampleRate,
         originalChannels: _originalChannels,
@@ -528,14 +618,205 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       timeline: TimelineBar(
         clips: _clips,
-        totalDuration: _getTotalDuration(),
+        totalDuration: total,
         cursorPosition: _previewPosition,
         selectedClipIndex: _selectedClipIndex,
-        currentTime: _previewPosition * _getTotalDuration(),
+        currentTime: _previewPosition * total,
         isPlaying: _isPlaying,
         onPlayPause: _togglePlayPause,
         onSeek: _onTimelineCursorMoved,
+        onSelectClip: (index) => setState(() => _selectedClipIndex = index),
         thumbnails: _thumbnailEntries,
+      ),
+    ),
+            ),
+            if (_clips.isNotEmpty) _buildTimelineActions(),
+            if (_isExporting) _buildExportProgressBar(),
+            _buildStepSlider(),
+          ],
+        ),
+      ),
+    ),
+  );
+  }
+
+  Widget _buildTimelineActions() {
+    final selIdx = _selectedClipIndex;
+    final clip = selIdx != null && selIdx < _clips.length ? _clips[selIdx] : null;
+    return Container(
+      height: 32,
+      color: AppColors.timelineBg,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          _actionsButton(
+            icon: Icons.content_cut,
+            label: 'Split',
+            tooltip: 'Split (S)',
+            onTap: _splitCurrentClip,
+            color: AppColors.warning,
+          ),
+          const SizedBox(width: 4),
+          _actionsButton(
+            icon: clip != null && !clip.isVisible ? Icons.visibility : Icons.visibility_off,
+            label: clip == null ? 'Delete' : (clip.isVisible ? 'Delete' : 'Restore'),
+            tooltip: clip == null ? 'Select a clip' : (clip.isVisible ? 'Delete (D)' : 'Restore (A)'),
+            onTap: clip != null
+                ? (clip.isVisible
+                    ? () => _deleteClip(selIdx!)
+                    : () => _restoreClip(selIdx!))
+                : null,
+            color: AppColors.error,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionsButton({
+    required IconData icon,
+    required String label,
+    required String tooltip,
+    required VoidCallback? onTap,
+    required Color color,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          height: 26,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: onTap != null ? 0.15 : 0.05),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 12, color: onTap != null ? color : color.withValues(alpha: 0.3)),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: onTap != null ? color : color.withValues(alpha: 0.3),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExportProgressBar() {
+    return Container(
+      height: 32,
+      color: AppColors.timelineBg,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              _exportStage,
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: _exportProgress,
+                minHeight: 6,
+                backgroundColor: AppColors.border,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 36,
+            child: Text(
+              '${(_exportProgress * 100).toInt()}%',
+              style: TextStyle(fontSize: 10, color: AppColors.textDim),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _stepButton(Icons.close, _cancelExport),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepSlider() {
+    return Container(
+      height: 28,
+      color: AppColors.timelineBg,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          Text('Step:', style: TextStyle(fontSize: 10, color: AppColors.textDim)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Row(
+              children: List.generate(_stepSizes.length, (i) {
+                final isSelected = _seekStepSize == _stepSizes[i];
+                String label;
+                if (_stepSizes[i] >= 1) {
+                  label = '${_stepSizes[i].toInt()}s';
+                } else if (_stepSizes[i] == 0.1) {
+                  label = '0.1s';
+                } else {
+                  label = '1f';
+                }
+                return GestureDetector(
+                  onTap: () => setState(() => _seekStepSize = _stepSizes[i]),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.accent.withOpacity(0.2) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(4),
+                      border: isSelected ? Border.all(color: AppColors.accent.withOpacity(0.5)) : null,
+                    ),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isSelected ? AppColors.accent : AppColors.textDim,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _stepButton(Icons.skip_previous, () => _onSeekStep(false)),
+          _stepButton(Icons.skip_next, () => _onSeekStep(true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepButton(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: onTap,
+        child: Container(
+          width: 24,
+          height: 24,
+          alignment: Alignment.center,
+          child: Icon(icon, size: 14, color: AppColors.textDim),
+        ),
       ),
     );
   }

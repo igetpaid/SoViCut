@@ -19,4 +19,4 @@ echo.
 echo ========================================
 echo   Press any button to exit
 echo ========================================
-pause > nul
+:: pause > nul

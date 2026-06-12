@@ -6,12 +6,16 @@ class ClipsTab extends StatelessWidget {
   final List<Clip> clips;
   final Function(int) onDelete;
   final Function(int) onRestore;
-  
+  final Function(int)? onSelect;
+  final int? selectedIndex;
+
   const ClipsTab({
     super.key,
     required this.clips,
     required this.onDelete,
     required this.onRestore,
+    this.onSelect,
+    this.selectedIndex,
   });
 
   String formatDuration(double seconds) {
@@ -32,20 +36,26 @@ class ClipsTab extends StatelessWidget {
             children: [
               const Icon(Icons.content_cut, size: 20, color: Colors.orange),
               const SizedBox(width: 8),
-              Text(
-                AppLocalizations.t('tabs.clips'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(12),
-                ),
+              Expanded(
                 child: Text(
-                  AppLocalizations.t('timeline.clipsCount', {'count': '${clips.length}', 'visible': '${clips.where((c) => c.isVisible).length}'}),
-                  style: const TextStyle(fontSize: 12),
+                  AppLocalizations.t('tabs.clips'),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[800],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    AppLocalizations.t('timeline.clipsCount', {'count': '${clips.length}', 'visible': '${clips.where((c) => c.isVisible).length}'}),
+                    style: const TextStyle(fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ],
@@ -54,9 +64,17 @@ class ClipsTab extends StatelessWidget {
           ...clips.asMap().entries.map((entry) {
             final index = entry.key;
             final clip = entry.value;
-            return Card(
+            return GestureDetector(
+              onTap: onSelect != null ? () => onSelect!(index) : null,
+              child: Card(
               margin: const EdgeInsets.only(bottom: 8),
-              color: clip.isVisible ? Colors.grey[800] : Colors.grey[800]!.withOpacity(0.4),
+              color: index == selectedIndex ? Colors.orange[900] : (clip.isVisible ? Colors.grey[800] : Colors.grey[800]!.withOpacity(0.4)),
+              shape: index == selectedIndex
+                  ? RoundedRectangleBorder(
+                      side: BorderSide(color: Colors.orange, width: 1.5),
+                      borderRadius: BorderRadius.circular(12),
+                    )
+                  : null,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
@@ -112,6 +130,7 @@ class ClipsTab extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
               ),
             );
           }),

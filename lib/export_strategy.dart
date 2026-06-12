@@ -14,9 +14,37 @@ abstract class ExportStrategy {
     int? trimMode,
     required List<Clip> clips,
     ExportSettings? exportSettings,
+    void Function(double progress, String stage)? onProgress,
+    bool Function()? isCancelled,
   });
 
   String get name;
+}
+
+/// Merges adjacent visible clips (same source, contiguous time) into single segments.
+List<Clip> mergeAdjacentVisibleClips(List<Clip> clips) {
+  final visible = clips.where((c) => c.isVisible).toList();
+  if (visible.isEmpty) return visible;
+  final merged = <Clip>[];
+  Clip? current;
+  for (final clip in visible) {
+    if (current == null) {
+      current = clip;
+    } else if (current.sourcePath == clip.sourcePath && (clip.startTime - current.endTime).abs() < 0.001) {
+      current = Clip(
+        id: current.id,
+        sourcePath: current.sourcePath,
+        startTime: current.startTime,
+        endTime: clip.endTime,
+        isVisible: true,
+      );
+    } else {
+      merged.add(current);
+      current = clip;
+    }
+  }
+  if (current != null) merged.add(current);
+  return merged;
 }
 
 /// Результат проверки коротких фрагментов
