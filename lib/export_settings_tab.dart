@@ -1,7 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'audio_track.dart';
 import 'media_info_service.dart';
+import 'models/media_info.dart';
+import 'core/localization/app_localizations.dart';
 
 enum AudioCodec { aac, mp3, pcm }
 enum BitrateMode { cbr, vbr }
@@ -38,6 +39,39 @@ class ExportSettings {
     this.mixToSingleTrack = false,
     this.originalTrackTitles = const {},
   });
+
+  static const youtube = ExportSettings(
+    audioCodec: AudioCodec.aac,
+    bitrateMode: BitrateMode.cbr,
+    audioBitrate: 192,
+    sampleRate: 48000,
+    channels: 2,
+    videoCodec: VideoCodec.h264,
+    videoQuality: VideoQuality.high,
+    crf: 18,
+  );
+
+  static const telegram = ExportSettings(
+    audioCodec: AudioCodec.aac,
+    bitrateMode: BitrateMode.vbr,
+    audioBitrate: 128,
+    sampleRate: 44100,
+    channels: 1,
+    videoCodec: VideoCodec.h264,
+    videoQuality: VideoQuality.medium,
+    crf: 23,
+  );
+
+  static const archive = ExportSettings(
+    audioCodec: AudioCodec.aac,
+    bitrateMode: BitrateMode.cbr,
+    audioBitrate: 320,
+    sampleRate: 48000,
+    channels: 2,
+    videoCodec: VideoCodec.h264,
+    videoQuality: VideoQuality.source,
+    crf: 18,
+  );
   
   factory ExportSettings.defaults({
     required int originalBitrate,
@@ -148,7 +182,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
     if (widget.videoPath == null) {
       setState(() {
         _isLoading = false;
-        _error = 'Видео не загружено';
+        _error = AppLocalizations.t('export.notLoaded');
       });
       return;
     }
@@ -179,7 +213,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       _calculateEstimatedSize();
       _notifyChanged();
     } catch (e) {
-      _error = 'Ошибка: $e';
+      _error = AppLocalizations.t('errors.genericError', {'error': '$e'});
     } finally {
       setState(() => _isLoading = false);
     }
@@ -230,10 +264,13 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '📊 Настройки экспорта',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange),
+          Text(
+            '📊 ${AppLocalizations.t('export.title')}',
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange),
           ),
+          const SizedBox(height: 16),
+          
+          _buildPresetsSection(),
           const SizedBox(height: 16),
           
           _buildFileInfoSection(),
@@ -257,6 +294,79 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
     );
   }
   
+  Widget _buildPresetsSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[700]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const Icon(Icons.flash_on, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
+                Text('🎯 ${AppLocalizations.t('export.presets')}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          const Divider(height: 0, color: Colors.grey),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                _presetButton('YouTube', ExportSettings.youtube, Icons.play_circle_outline),
+                const SizedBox(width: 8),
+                _presetButton('Telegram', ExportSettings.telegram, Icons.send_outlined),
+                const SizedBox(width: 8),
+                _presetButton('Archive', ExportSettings.archive, Icons.archive_outlined),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _presetButton(String label, ExportSettings preset, IconData icon) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            setState(() {
+              _settings = preset;
+            });
+            _notifyChanged();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: identical(_settings, preset) ? Colors.orange : Colors.grey[700]!,
+                width: identical(_settings, preset) ? 2 : 1,
+              ),
+              color: identical(_settings, preset) ? Colors.orange.withValues(alpha: 0.1) : null,
+            ),
+            child: Column(
+              children: [
+                Icon(icon, color: identical(_settings, preset) ? Colors.orange : Colors.grey, size: 20),
+                const SizedBox(height: 4),
+                Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFileInfoSection() {
     return Container(
       decoration: BoxDecoration(
@@ -267,13 +377,13 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.all(12),
             child: Row(
               children: [
                 Icon(Icons.info, color: Colors.orange, size: 20),
                 SizedBox(width: 8),
-                Text('📁 Информация о файле', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text('📁 ${AppLocalizations.t('export.fileInfo')}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -295,10 +405,10 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildInfoRow('Формат контейнера', _mediaInfo!.container.format.toUpperCase()),
-                  _buildInfoRow('Размер файла', _mediaInfo!.container.sizeText),
-                  _buildInfoRow('Длительность', _mediaInfo!.container.durationText),
-                  _buildInfoRow('Общий битрейт', _mediaInfo!.container.bitrateText),
+                  _buildInfoRow(AppLocalizations.t('export.format'), _mediaInfo!.container.format.toUpperCase()),
+                  _buildInfoRow(AppLocalizations.t('export.fileSize'), _mediaInfo!.container.sizeText),
+                  _buildInfoRow(AppLocalizations.t('export.duration'), _mediaInfo!.container.durationText),
+                  _buildInfoRow(AppLocalizations.t('export.bitrate'), _mediaInfo!.container.bitrateText),
                   
                   const SizedBox(height: 12),
                   const Text('🎬 Видео:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -346,13 +456,13 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(12),
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                Icon(Icons.audiotrack, color: Colors.orange, size: 20),
-                SizedBox(width: 8),
-                Text('🎚️ Аудио настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Icon(Icons.audiotrack, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
+                Text('🎚️ ${AppLocalizations.t('export.audioSettings')}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -364,7 +474,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SwitchListTile(
-                  title: const Text('Сохранять оригинальные названия дорожек'),
+                  title: Text(AppLocalizations.t('export.preserveTracks')),
                   subtitle: const Text('Названия аудиодорожек останутся как в исходном файле'),
                   value: _settings.preserveOriginalTrackNames,
                   onChanged: (val) {
@@ -376,7 +486,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 ),
                 
                 SwitchListTile(
-                  title: const Text('Сохранять все аудиодорожки'),
+                  title: Text(AppLocalizations.t('export.preserveAll')),
                   subtitle: const Text('Все оригинальные аудиодорожки будут сохранены'),
                   value: _settings.preserveAllAudioStreams,
                   onChanged: (val) {
@@ -391,7 +501,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                   Column(
                     children: [
                       const SizedBox(height: 8),
-                      const Text('Выберите дорожки:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      Text(AppLocalizations.t('export.selectTracks'), style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       const SizedBox(height: 8),
                       ..._mediaInfo!.audioStreams.map((stream) => CheckboxListTile(
                         title: Text(stream.title, style: const TextStyle(fontSize: 13)),
@@ -421,7 +531,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 const SizedBox(height: 12),
                 
                 SwitchListTile(
-                  title: const Text('Объединить все дорожки в одну'),
+                  title: Text(AppLocalizations.t('export.mixToSingle')),
                   subtitle: const Text('Смешать выбранные дорожки в один поток'),
                   value: _settings.mixToSingleTrack,
                   onChanged: (val) {
@@ -437,7 +547,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 const SizedBox(height: 12),
                 
                 _buildDropdown(
-                  label: 'Аудио кодек',
+                  label: AppLocalizations.t('export.audioCodec'),
                   value: _settings.audioCodec,
                   items: const [
                     DropdownMenuItem(value: AudioCodec.aac, child: Text('AAC')),
@@ -455,7 +565,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 const SizedBox(height: 12),
                 
                 _buildDropdown(
-                  label: 'Режим битрейта',
+                  label: AppLocalizations.t('export.bitrateMode'),
                   value: _settings.bitrateMode,
                   items: const [
                     DropdownMenuItem(value: BitrateMode.cbr, child: Text('CBR (постоянный)')),
@@ -518,7 +628,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 const SizedBox(height: 12),
                 
                 _buildDropdown(
-                  label: 'Частота дискретизации',
+                  label: AppLocalizations.t('export.sampleRate'),
                   value: _settings.sampleRate,
                   items: const [
                     DropdownMenuItem(value: 22050, child: Text('22.05 kHz')),
@@ -537,12 +647,12 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 const SizedBox(height: 12),
                 
                 _buildDropdown(
-                  label: 'Каналы',
+                  label: AppLocalizations.t('export.channels'),
                   value: _settings.channels,
-                  items: const [
-                    DropdownMenuItem(value: 1, child: Text('Моно')),
-                    DropdownMenuItem(value: 2, child: Text('Стерео')),
-                    DropdownMenuItem(value: 6, child: Text('5.1')),
+                  items: [
+                    DropdownMenuItem(value: 1, child: Text(AppLocalizations.t('audio.mono'))),
+                    DropdownMenuItem(value: 2, child: Text(AppLocalizations.t('audio.stereo'))),
+                    const DropdownMenuItem(value: 6, child: Text('5.1')),
                   ],
                   onChanged: (val) {
                     if (val != null) {
@@ -569,13 +679,13 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(12),
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                Icon(Icons.video_settings, color: Colors.orange, size: 20),
-                SizedBox(width: 8),
-                Text('🎬 Видео настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Icon(Icons.video_settings, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
+                Text('🎬 ${AppLocalizations.t('export.videoSettings')}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -587,7 +697,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildDropdown(
-                  label: 'Видео кодек',
+                  label: AppLocalizations.t('export.videoCodec'),
                   value: _settings.videoCodec,
                   items: const [
                     DropdownMenuItem(value: VideoCodec.h264, child: Text('H.264 / AVC')),
@@ -605,13 +715,13 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 const SizedBox(height: 12),
                 
                 _buildDropdown(
-                  label: 'Качество',
+                  label: AppLocalizations.t('export.quality'),
                   value: _settings.videoQuality,
-                  items: const [
-                    DropdownMenuItem(value: VideoQuality.source, child: Text('Исходное (без перекодирования)')),
-                    DropdownMenuItem(value: VideoQuality.high, child: Text('Высокое (CRF 18)')),
-                    DropdownMenuItem(value: VideoQuality.medium, child: Text('Среднее (CRF 23)')),
-                    DropdownMenuItem(value: VideoQuality.low, child: Text('Низкое (CRF 28)')),
+                  items: [
+                    DropdownMenuItem(value: VideoQuality.source, child: Text(AppLocalizations.t('export.source'))),
+                    DropdownMenuItem(value: VideoQuality.high, child: Text(AppLocalizations.t('export.high'))),
+                    DropdownMenuItem(value: VideoQuality.medium, child: Text(AppLocalizations.t('export.medium'))),
+                    DropdownMenuItem(value: VideoQuality.low, child: Text(AppLocalizations.t('export.low'))),
                   ],
                   onChanged: (val) {
                     if (val != null) {
@@ -626,10 +736,10 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 ),
                 
                 if (_settings.videoQuality == VideoQuality.source)
-                  const Padding(
+          Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
-                      'ℹ️ Видео будет скопировано без перекодирования',
+                      'ℹ️ ${AppLocalizations.t('export.noReencode')}',
                       style: TextStyle(fontSize: 11, color: Colors.grey),
                     ),
                   ),
@@ -642,7 +752,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('CRF: ${_settings.crf} (0-51, меньше = лучше)'),
+                            Text(AppLocalizations.t('export.crf', {'value': '${_settings.crf}'})),
                             Slider(
                               value: _settings.crf.toDouble(),
                               min: 0,
@@ -695,13 +805,13 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(12),
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                Icon(Icons.calculate, color: Colors.orange, size: 20),
-                SizedBox(width: 8),
-                Text('📈 Прогноз размера', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Icon(Icons.calculate, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
+                Text('📈 ${AppLocalizations.t('export.sizeEstimate')}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -711,8 +821,8 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
-                _buildInfoRow('Исходный размер', _mediaInfo?.container.sizeText ?? '—'),
-                _buildInfoRow('Прогнозируемый размер', '${_estimatedOutputSizeMb.toStringAsFixed(1)} MB'),
+                _buildInfoRow(AppLocalizations.t('export.originalSize'), _mediaInfo?.container.sizeText ?? '—'),
+                _buildInfoRow(AppLocalizations.t('export.estimatedSize'), '${_estimatedOutputSizeMb.toStringAsFixed(1)} MB'),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(
                   value: _mediaInfo != null ? (_estimatedOutputSizeMb / (_mediaInfo!.container.size / (1024 * 1024))) : 0,

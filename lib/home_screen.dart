@@ -1,33 +1,43 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'audio_track.dart';
 import 'clip.dart';
 import 'ffmpeg_service.dart';
-import 'preview_area.dart';
-import 'timeline_widget.dart';
 import 'tool_panel.dart';
 import 'export_settings_tab.dart';
 import 'export_strategy.dart';
 import 'concat_strategy.dart';
-import 'transcode_strategy.dart';
 import 'short_clips_dialog.dart';
+import 'services/ffmpeg/ffmpeg_detection_service.dart';
+import 'services/ffmpeg/thumbnail_service.dart';
+import 'ui/home/toolbar.dart';
+import 'ui/home/main_layout.dart';
+import 'ui/preview/custom_player.dart';
+import 'ui/timeline/timeline_bar.dart';
+import 'core/localization/app_localizations.dart';
+import 'providers/audio_provider.dart';
+import 'providers/video_provider.dart';
+import 'providers/clips_provider.dart';
+import 'providers/export_provider.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   String? _videoPath;
   List<AudioTrack> _audioTracks = [];
   List<Clip> _clips = [];
   bool _isLoading = false;
-  bool _isDragging = false;
   
   bool _trimEnabled = false;
   double _trimSeconds = 10;
@@ -35,8 +45,6 @@ class _HomeScreenState extends State<HomeScreen> {
   
   bool _audioEnabled = false;
   bool _mixTracks = false;
-  
-  int _nextClipId = 1;
   
   int _originalAudioBitrate = 192000;
   int _originalSampleRate = 48000;
@@ -48,6 +56,66 @@ class _HomeScreenState extends State<HomeScreen> {
   );
   
   double _previewPosition = 0;
+  VideoPlayerController? _videoController;
+  bool _isPlaying = false;
+  int? _selectedClipIndex;
+  AppMode _appMode = AppMode.single;
+  List<ThumbnailEntry> _thumbnailEntries = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkFfmpeg();
+    _syncFromProviders();
+  }
+
+  void _syncFromProviders() {
+    final audio = ref.read(audioProvider);
+    final video = ref.read(videoProvider);
+    final clips = ref.read(clipsProvider);
+    final export = ref.read(exportProvider);
+
+    _audioTracks = audio.tracks;
+    _audioEnabled = audio.enabled;
+    _mixTracks = audio.mixEnabled;
+    if (video.path != null) _videoPath = video.path;
+    _previewPosition = video.previewPosition;
+    if (clips.clips.isNotEmpty) {
+      _clips = clips.clips;
+    }
+    _exportSettings = export.settings;
+  }
+
+  void _syncToProviders() {
+    ref.read(audioProvider.notifier).setTracks(_audioTracks);
+    ref.read(audioProvider.notifier).setEnabled(_audioEnabled);
+    ref.read(audioProvider.notifier).setMixEnabled(_mixTracks);
+    ref.read(videoProvider.notifier).loadVideo(_videoPath ?? '');
+    ref.read(videoProvider.notifier).setPreviewPosition(_previewPosition);
+    ref.read(clipsProvider.notifier).setClips(_clips);
+    ref.read(exportProvider.notifier).updateSettings(_exportSettings);
+  }
+
+  Future<void> _checkFfmpeg() async {
+    final result = await FfmpegDetectionService.check();
+    if (!result.allFound && mounted) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(AppLocalizations.t('errors.ffmpegNotFound')),
+          content: Text(
+            AppLocalizations.t('errors.ffmpegNotFoundDesc'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(AppLocalizations.t('common.continue')),
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   double _getTotalDuration() {
     double total = 0;
@@ -59,19 +127,56 @@ class _HomeScreenState extends State<HomeScreen> {
     return total;
   }
 
-  void _onPreviewPositionChanged(double position) {
-    setState(() {
-      _previewPosition = position;
-    });
-  }
-
   void _onTimelineCursorMoved(double timeInSeconds) {
     final totalDur = _getTotalDuration();
-    if (totalDur > 0) {
-      setState(() {
-        _previewPosition = timeInSeconds / totalDur;
-      });
+    if (totalDur <= 0) return;
+
+    setState(() {
+      _previewPosition = timeInSeconds / totalDur;
+    });
+
+    if (_videoController != null) {
+      _videoController!.seekTo(_visibleTimeToFullTime(timeInSeconds));
     }
+  }
+
+  /// Преобразует время в видимой временной шкале в абсолютное время видео
+  Duration _visibleTimeToFullTime(double visibleSeconds) {
+    double accumulatedVisible = 0;
+    for (final clip in _clips) {
+      if (!clip.isVisible) continue;
+      final clipDur = clip.duration;
+      if (visibleSeconds <= accumulatedVisible + clipDur) {
+        final offsetInClip = visibleSeconds - accumulatedVisible;
+        return Duration(
+          milliseconds: ((clip.startTime + offsetInClip) * 1000).toInt(),
+        );
+      }
+      accumulatedVisible += clipDur;
+    }
+    // За пределами — последняя видимая точка
+    final lastVisible = _clips.lastWhere(
+      (c) => c.isVisible,
+      orElse: () => _clips.last,
+    );
+    return Duration(milliseconds: (lastVisible.endTime * 1000).toInt());
+  }
+
+  /// Преобразует долю полного видео в долю видимой временной шкалы
+  double _fullFractionToVisible(double fullFraction) {
+    final fullMs = _videoController!.value.duration.inMilliseconds;
+    final fullSec = (fullFraction * fullMs) / 1000.0;
+    double visibleSec = 0;
+    for (final clip in _clips) {
+      if (!clip.isVisible) continue;
+      if (fullSec >= clip.startTime && fullSec <= clip.endTime) {
+        visibleSec += (fullSec - clip.startTime);
+        final visTotal = _getTotalDuration();
+        return visTotal > 0 ? visibleSec / visTotal : 0;
+      }
+      visibleSec += clip.duration;
+    }
+    return _previewPosition;
   }
 
   /// Проверяет наличие коротких фрагментов (< 0.5 сек)
@@ -117,10 +222,11 @@ class _HomeScreenState extends State<HomeScreen> {
       exportSettings: _exportSettings,
     );
     
+    if (!mounted) return;
     setState(() => _isLoading = false);
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? '✅ Экспорт завершён!\n$outPath' : '❌ Ошибка экспорта')),
+      SnackBar(content: Text(success ? '${AppLocalizations.t('export.success')}\n$outPath' : AppLocalizations.t('export.error'))),
     );
   }
 
@@ -159,16 +265,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadVideo(String path) async {
+    // Clean up old thumbnails
+    if (_thumbnailEntries.isNotEmpty) {
+      final oldDir = Directory(_thumbnailEntries.first.path).parent;
+      ThumbnailService.cleanThumbnailDir(oldDir.path);
+    }
     setState(() {
       _videoPath = path;
       _isLoading = true;
     });
-    
+
     try {
       final tracks = await FFmpegService.analyzeAudio(path);
       final duration = await _getVideoDuration(path);
       final audioInfo = await _getAudioInfo(path);
-      
+
       final clips = [
         Clip(
           id: 0,
@@ -178,11 +289,15 @@ class _HomeScreenState extends State<HomeScreen> {
           isVisible: true,
         ),
       ];
-      
+
+      await _initVideoPlayer(path);
+
+      // Generate thumbnails in background
+      unawaited(_generateThumbnails(path, duration));
+
       setState(() {
         _audioTracks = tracks;
         _clips = clips;
-        _nextClipId = 1;
         _originalAudioBitrate = audioInfo.bitrate;
         _originalSampleRate = audioInfo.sampleRate;
         _originalChannels = audioInfo.channels;
@@ -193,17 +308,59 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         _previewPosition = 0;
         _isLoading = false;
+        _thumbnailEntries = [];
       });
     } catch (e, stackTrace) {
-      print('Ошибка загрузки видео: $e');
+      print('${AppLocalizations.t('player.error')}: $e');
       print(stackTrace);
       setState(() {
         _isLoading = false;
         _videoPath = null;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки видео: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${AppLocalizations.t('player.error')}: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+    _syncToProviders();
+  }
+
+  Future<void> _generateThumbnails(String path, double duration) async {
+    final tempDir = '${Directory.systemTemp.path}\\sovicut_thumbs_${DateTime.now().millisecondsSinceEpoch}';
+    final entries = await ThumbnailService.generateThumbnails(
+      videoPath: path,
+      outputDir: tempDir,
+      duration: duration,
+    );
+    if (!mounted) return;
+    setState(() => _thumbnailEntries = entries);
+  }
+
+  Future<void> _initVideoPlayer(String path) async {
+    await _videoController?.dispose();
+    final controller = VideoPlayerController.file(File(path));
+    await controller.initialize();
+    controller.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        _isPlaying = controller.value.isPlaying;
+        if (controller.value.duration.inMilliseconds > 0) {
+          final fullFraction = controller.value.position.inMilliseconds /
+              controller.value.duration.inMilliseconds;
+          _previewPosition = _fullFractionToVisible(fullFraction);
+        }
+      });
+    });
+    setState(() => _videoController = controller);
+  }
+
+  void _togglePlayPause() {
+    if (_videoController == null) return;
+    if (_isPlaying) {
+      _videoController!.pause();
+    } else {
+      _videoController!.play();
     }
   }
 
@@ -259,37 +416,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return AudioInfo(bitrate: bitrate, sampleRate: sampleRate, channels: channels);
   }
 
-  void _splitClip(int clipIndex, double splitTimeInClip) {
-    if (clipIndex < 0 || clipIndex >= _clips.length) return;
-    final clip = _clips[clipIndex];
-    if (!clip.isVisible) return;
-    
-    final splitAbsolute = clip.startTime + splitTimeInClip;
-    
-    final newClips = List<Clip>.from(_clips);
-    final clip1 = Clip(
-      id: _nextClipId++,
-      sourcePath: clip.sourcePath,
-      startTime: clip.startTime,
-      endTime: splitAbsolute,
-      isVisible: true,
-    );
-    final clip2 = Clip(
-      id: _nextClipId++,
-      sourcePath: clip.sourcePath,
-      startTime: splitAbsolute,
-      endTime: clip.endTime,
-      isVisible: true,
-    );
-    newClips.removeAt(clipIndex);
-    newClips.insert(clipIndex, clip2);
-    newClips.insert(clipIndex, clip1);
-    
-    setState(() {
-      _clips = newClips;
-    });
-  }
-
   void _deleteClip(int clipIndex) {
     if (clipIndex < 0 || clipIndex >= _clips.length) return;
     setState(() {
@@ -304,7 +430,27 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _selectClip(int clipIndex, double cursorInClip) {}
+  void _onCloseVideo() {
+    _videoController?.dispose();
+    if (_thumbnailEntries.isNotEmpty) {
+      final oldDir = Directory(_thumbnailEntries.first.path).parent;
+      ThumbnailService.cleanThumbnailDir(oldDir.path);
+    }
+    setState(() {
+      _videoController = null;
+      _videoPath = null;
+      _audioTracks = [];
+      _clips = [];
+      _previewPosition = 0;
+      _isPlaying = false;
+      _selectedClipIndex = null;
+      _thumbnailEntries = [];
+      _trimEnabled = false;
+      _audioEnabled = false;
+      _mixTracks = false;
+    });
+    _syncToProviders();
+  }
 
   Future<String> _getUniqueFilePath(String directory, String baseName) async {
     final editedName = '${baseName}_edited.mp4';
@@ -327,132 +473,69 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF1a1a1a), Color(0xFF0d0d0d)],
-          ),
+    final fileName = _videoPath?.split('\\').last.split('/').last;
+
+    return MainLayout(
+      toolbar: Toolbar(
+        currentMode: _appMode,
+        onModeChanged: (mode) => setState(() => _appMode = mode),
+        currentFileName: fileName,
+        onExport: _export,
+        isExporting: _isLoading,
+        onCloseVideo: _videoPath != null ? _onCloseVideo : null,
+      ),
+      preview: DropTarget(
+        onDragDone: (detail) {
+          if (detail.files.isNotEmpty) {
+            _loadVideo(detail.files.first.path);
+          }
+        },
+        child: CustomPlayer(
+          controller: _videoController,
+          hasAudioChanges: _audioEnabled,
+          onTapEmpty: _pickVideo,
         ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  const Text(
-                    'SoViCut',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 7,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: PreviewArea(
-                          videoPath: _videoPath,
-                          isDragging: _isDragging,
-                          onTap: _pickVideo,
-                          onDragEntered: () => setState(() => _isDragging = true),
-                          onDragExited: () => setState(() => _isDragging = false),
-                          onDragDone: (detail) {
-                            setState(() => _isDragging = false);
-                            if (detail.files.isNotEmpty) {
-                              _loadVideo(detail.files.first.path!);
-                            }
-                          },
-                          clips: _clips,
-                          cursorPosition: _previewPosition,
-                          onPositionChanged: _onPreviewPositionChanged,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: ToolPanel(
-                      trimEnabled: _trimEnabled,
-                      onTrimEnabledChanged: (val) => setState(() => _trimEnabled = val),
-                      onTrimChanged: (seconds, mode) {
-                        setState(() {
-                          _trimSeconds = seconds;
-                          _trimMode = mode;
-                        });
-                      },
-                      trimSeconds: _trimSeconds,
-                      trimMode: _trimMode,
-                      audioEnabled: _audioEnabled,
-                      onAudioEnabledChanged: (val) => setState(() => _audioEnabled = val),
-                      audioTracks: _audioTracks,
-                      onAudioTracksChanged: (tracks) => setState(() => _audioTracks = tracks),
-                      mixEnabled: _mixTracks,
-                      onMixEnabledChanged: (val) => setState(() => _mixTracks = val),
-                      clips: _clips,
-                      videoPath: _videoPath,
-                      onDeleteClip: _deleteClip,
-                      onRestoreClip: _restoreClip,
-                      originalAudioBitrate: _originalAudioBitrate,
-                      originalSampleRate: _originalSampleRate,
-                      originalChannels: _originalChannels,
-                      onExportSettingsChanged: (settings) {
-                        setState(() {
-                          _exportSettings = settings;
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            TimelineWidget(
-              clips: _clips,
-              onSplit: (index, splitTime) => _splitClip(index, splitTime),
-              onDelete: _deleteClip,
-              onRestore: _restoreClip,
-              onSelectClip: _selectClip,
-              onCursorMoved: _onTimelineCursorMoved,
-              externalCursorPosition: _previewPosition,
-            ),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[900],
-                border: Border(top: BorderSide(color: Colors.grey[800]!, width: 1)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    SizedBox(
-                      width: 120,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _export,
-                        icon: _isLoading
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.save, size: 16),
-                        label: Text(_isLoading ? '...' : 'Экспорт'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+      ),
+      rightPanel: ToolPanel(
+        trimEnabled: _trimEnabled,
+        onTrimEnabledChanged: (val) => setState(() => _trimEnabled = val),
+        onTrimChanged: (seconds, mode) {
+          setState(() {
+            _trimSeconds = seconds;
+            _trimMode = mode;
+          });
+        },
+        trimSeconds: _trimSeconds,
+        trimMode: _trimMode,
+        audioEnabled: _audioEnabled,
+        onAudioEnabledChanged: (val) => setState(() => _audioEnabled = val),
+        audioTracks: _audioTracks,
+        onAudioTracksChanged: (tracks) => setState(() => _audioTracks = tracks),
+        mixEnabled: _mixTracks,
+        onMixEnabledChanged: (val) => setState(() => _mixTracks = val),
+        clips: _clips,
+        videoPath: _videoPath,
+        onDeleteClip: _deleteClip,
+        onRestoreClip: _restoreClip,
+        originalAudioBitrate: _originalAudioBitrate,
+        originalSampleRate: _originalSampleRate,
+        originalChannels: _originalChannels,
+        onExportSettingsChanged: (settings) {
+          setState(() {
+            _exportSettings = settings;
+          });
+        },
+      ),
+      timeline: TimelineBar(
+        clips: _clips,
+        totalDuration: _getTotalDuration(),
+        cursorPosition: _previewPosition,
+        selectedClipIndex: _selectedClipIndex,
+        currentTime: _previewPosition * _getTotalDuration(),
+        isPlaying: _isPlaying,
+        onPlayPause: _togglePlayPause,
+        onSeek: _onTimelineCursorMoved,
+        thumbnails: _thumbnailEntries,
       ),
     );
   }

@@ -1,14 +1,14 @@
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'audio_track.dart';
 import 'clip.dart';
 import 'export_settings_tab.dart';
 import 'export_strategy.dart';
 import 'media_info_service.dart';
+import 'core/localization/app_localizations.dart';
 
 class ConcatStrategy implements ExportStrategy {
   @override
-  String get name => 'Округление до ключевых кадров (быстро)';
+  String get name => AppLocalizations.t('dialog.roundToKeyframes');
 
   Future<List<double>> _getIFrames(String inputPath) async {
     final result = await Process.run(
@@ -58,13 +58,13 @@ class ConcatStrategy implements ExportStrategy {
     required List<Clip> clips,
     ExportSettings? exportSettings,
   }) async {
-    // 1. Получаем оригинальные названия аудиодорожек (исправление индексов)
+    // 1. Получаем оригинальные названия аудиодорожек
     final allStreams = await MediaInfoService.getAudioStreams(inputPath);
-    final Map<int, String> originalTitle = {}; // ffmpeg-индекс → название
-    for (final stream in allStreams) {
-      originalTitle[stream.index - 1] = stream.title;
+    final Map<int, int> absoluteToPerType = {};
+    for (int i = 0; i < allStreams.length; i++) {
+      absoluteToPerType[allStreams[i].index] = i;
     }
-    print('Оригинальные названия (ffmpeg-индексы): $originalTitle');
+    print('Оригинальные названия аудиодорожек: ${allStreams.map((s) => '${s.index}: "${s.title}"').join(', ')}');
 
     // 2. Нужно ли перекодирование аудио (изменение громкости или смешивание)
     final needAudioReencode = audioTracks.any((t) => t.volumePercent != 100) || mixAudio;
@@ -119,14 +119,14 @@ class ConcatStrategy implements ExportStrategy {
     // 7. Видео: копируем без изменений (быстро, исходное качество, нормальный размер)
     args.addAll(['-map', '0:v:0', '-c:v', 'copy']);
 
-    // 8. Аудио: определяем, какие дорожки обрабатывать (ffmpeg-индексы)
-    final enabledIndices = audioTracks
+    // 8. Аудио: определяем, какие дорожки обрабатывать (0-based per-type индексы)
+    final enabledAbsolute = audioTracks
         .where((t) => t.isEnabled)
-        .map((t) => t.index - 1)
+        .map((t) => t.index)
         .toList();
-    final List<int> indicesToProcess = enabledIndices.isEmpty
-        ? List.generate(originalTitle.length, (i) => i)
-        : enabledIndices;
+    final List<int> indicesToProcess = enabledAbsolute.isEmpty
+        ? List.generate(allStreams.length, (i) => i)
+        : enabledAbsolute.map((abs) => absoluteToPerType[abs]!).toList();
 
     if (needAudioReencode && mixAudio && indicesToProcess.length > 1) {
       // --- Смешивание дорожек в одну ---
@@ -134,24 +134,26 @@ class ConcatStrategy implements ExportStrategy {
       final List<String> mixInputs = [];
       final List<String> trackNames = [];
       for (int j = 0; j < indicesToProcess.length; j++) {
-        final idx = indicesToProcess[j];
-        final origIdx = idx + 1; // обратно к ffprobe-индексу
-        final track = audioTracks.firstWhere((t) => t.index == origIdx);
+        final perTypeIdx = indicesToProcess[j];
+        final track = audioTracks.firstWhere((t) => t.index == allStreams[perTypeIdx].index);
         final factor = track.volumePercent / 100;
-        final title = originalTitle[idx] ?? 'Track ${idx + 1}';
+        final title = allStreams[perTypeIdx].title.isNotEmpty
+            ? allStreams[perTypeIdx].title
+            : 'Track ${perTypeIdx + 1}';
         trackNames.add(title);
         if (factor != 1.0) {
-          filterParts.add('[0:a:$idx]volume=${factor.toStringAsFixed(2)}[a$j]');
+          filterParts.add('[0:a:$perTypeIdx]volume=${factor.toStringAsFixed(2)}[a$j]');
           mixInputs.add('[a$j]');
         } else {
-          mixInputs.add('[0:a:$idx]');
+          mixInputs.add('[0:a:$perTypeIdx]');
         }
       }
-      if (filterParts.isNotEmpty) {
-        args.addAll(['-filter_complex', filterParts.join('; ')]);
-      }
+      final combinedFilters = <String>[
+        ...filterParts,
+        '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]',
+      ];
       args.addAll([
-        '-filter_complex', '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]',
+        '-filter_complex', combinedFilters.join('; '),
         '-map', '[aout]',
         '-metadata:s:a:0', 'title=Mixed: ${trackNames.join(" + ")}',
         '-c:a', targetAudioCodec, '-b:a', '${targetAudioBitrate}k',
@@ -160,9 +162,11 @@ class ConcatStrategy implements ExportStrategy {
     } else if (needAudioReencode) {
       // --- Перекодирование выбранных дорожек (раздельно) ---
       for (int j = 0; j < indicesToProcess.length; j++) {
-        final idx = indicesToProcess[j];
-        args.addAll(['-map', '0:a:$idx']);
-        final title = originalTitle[idx] ?? 'Track ${idx + 1}';
+        final perTypeIdx = indicesToProcess[j];
+        args.addAll(['-map', '0:a:$perTypeIdx']);
+        final title = allStreams[perTypeIdx].title.isNotEmpty
+            ? allStreams[perTypeIdx].title
+            : 'Track ${perTypeIdx + 1}';
         args.addAll(['-metadata:s:a:$j', 'title=$title']);
       }
       args.addAll([
@@ -171,12 +175,10 @@ class ConcatStrategy implements ExportStrategy {
       ]);
     } else {
       // --- Копирование всех дорожек с сохранением оригинальных названий ---
-      final int totalAudioCount = originalTitle.length;
-      for (int i = 0; i < totalAudioCount; i++) {
+      for (int i = 0; i < allStreams.length; i++) {
         args.addAll(['-map', '0:a:$i']);
-        final title = originalTitle[i] ?? '';
-        if (title.isNotEmpty) {
-          args.addAll(['-metadata:s:a:$i', 'title=$title']);
+        if (allStreams[i].title.isNotEmpty) {
+          args.addAll(['-metadata:s:a:$i', 'title=${allStreams[i].title}']);
         }
       }
       args.addAll(['-c:a', 'copy']);

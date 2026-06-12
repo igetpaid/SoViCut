@@ -1,0 +1,193 @@
+{
+  "appName": "SoViCut",
+  "appSubtitle": "Sound & Video — under control",
+
+  "menu": {
+    "singleMode": "Single File",
+    "batchMode": "Batch",
+    "export": "Export",
+    "saveProject": "Save Project",
+    "openProject": "Open Project",
+    "settings": "Settings",
+    "about": "About",
+    "closeVideo": "Close video"
+  },
+
+  "player": {
+    "play": "Play",
+    "pause": "Pause",
+    "dropVideo": "Click or drag a video",
+    "toStart": "to get started",
+    "loading": "Loading video...",
+    "error": "Failed to load video",
+    "fileNotFound": "File not found",
+    "retry": "Retry",
+    "audioWarning": "Audio changes will only apply on export",
+    "audioWarningTooltip": "For performance, audio effects are not applied to the player in real time. Click Export to apply all changes."
+  },
+
+  "timeline": {
+    "split": "Split at cursor position",
+    "delete": "Delete clip",
+    "restore": "Restore clip",
+    "clipsCount": "Clips: {count} ({visible} visible)",
+    "selectClip": "Select a clip for operations",
+    "clipNumber": "Clip {number}"
+  },
+
+  "tabs": {
+    "trim": "Trim",
+    "audio": "Audio",
+    "clips": "Clips",
+    "export": "Export"
+  },
+
+  "trim": {
+    "enable": "Enable trimming",
+    "keepFirst": "Keep first N seconds",
+    "removeLast": "Remove last N seconds",
+    "seconds": "sec",
+    "secondsHint": "Seconds (1–1000)"
+  },
+
+  "audio": {
+    "enable": "Enable audio",
+    "mixTracks": "Mix all tracks into one",
+    "noTracks": "No audio tracks found",
+    "normalize": "Normalize",
+    "normalizeTo": "Normalize to standard",
+    "exportTrack": "Export track",
+    "rename": "Rename",
+    "originalVolume": "Original",
+    "finalVolume": "Final",
+    "stereo": "Stereo",
+    "mono": "Mono",
+    "channels5_1": "5.1",
+    "channels7_1": "7.1",
+    "channelsCount": "{count} channels",
+    "track": "Track {number}",
+    "exported": "Exported: {result}",
+    "exportError": "Error exporting track \"{name}\"",
+    "normalizationInfo": "Normalization: {original} dB → {target} dB (applied on export)"
+  },
+
+  "export": {
+    "title": "Export Settings",
+    "fileInfo": "File Information",
+    "audioSettings": "Audio Settings",
+    "videoSettings": "Video Settings",
+    "sizeEstimate": "Size Estimate",
+    "originalSize": "Original Size",
+    "estimatedSize": "Estimated Size",
+    "format": "Container Format",
+    "fileSize": "File Size",
+    "duration": "Duration",
+    "bitrate": "Bitrate",
+    "codec": "Codec",
+    "quality": "Quality",
+    "source": "Source (no re-encode)",
+    "high": "High (CRF 18)",
+    "medium": "Medium (CRF 23)",
+    "low": "Low (CRF 28)",
+    "preserveTracks": "Preserve original track names",
+    "preserveAll": "Preserve all audio tracks",
+    "selectTracks": "Select tracks",
+    "mixToSingle": "Mix all tracks into one",
+    "audioCodec": "Audio Codec",
+    "bitrateMode": "Bitrate Mode",
+    "sampleRate": "Sample Rate",
+    "channels": "Channels",
+    "videoCodec": "Video Codec",
+    "crf": "CRF: {value} (0-51, lower = better)",
+    "noReencode": "Video will be copied without re-encoding",
+    "success": "Export complete!",
+    "error": "Export error",
+    "notLoaded": "Video not loaded",
+    "presets": "Presets"
+  },
+
+  "batch": {
+    "title": "Batch Processing",
+    "back": "Back to Home",
+    "addFiles": "Add Files",
+    "dropFiles": "Drop files here",
+    "noFiles": "No files added",
+    "operations": "Operations",
+    "removeLast": "Remove last",
+    "removeFirst": "Remove first",
+    "keepFirst": "Keep first",
+    "keepLast": "Keep last",
+    "removeRange": "Remove range",
+    "convertContainer": "Convert to format",
+    "extractAudio": "Extract audio",
+    "normalizeAudio": "Normalize volume",
+    "sec": "sec",
+    "start": "START",
+    "cancel": "Cancel",
+    "totalProgress": "Total: {total} files | Progress: {percent}%",
+    "fileProgress": "{filename} — {percent}%",
+    "complete": "Complete",
+    "queued": "Queued",
+    "processing": "Processing...",
+    "error": "Error",
+    "summary": "{total} files | ✓{succeeded} | ✗{failed}",
+    "containerFormat": "Container format",
+    "secondsFromStart": "Seconds from start:",
+    "secondsFromEnd": "Seconds from end:",
+    "fromSec": "From (sec):",
+    "toSec": "To (sec):",
+    "outputFolder": "Output folder",
+    "clear": "Clear"
+  },
+
+  "project": {
+    "save": "Save Project",
+    "open": "Open Project",
+    "saveSuccess": "Project saved",
+    "openSuccess": "Project loaded",
+    "error": "Project error",
+    "fileNotFound": "Video file not found: {path}",
+    "locateFile": "Locate video file",
+    "openVideoFirst": "Open a video before saving project",
+    "findNewPath": "Specify a new path?"
+  },
+
+  "dialog": {
+    "shortClipsFound": "Short clips detected",
+    "chooseAction": "Choose handling method:",
+    "cancelExport": "Cancel export",
+    "roundToKeyframes": "Snap to keyframes (fast)",
+    "transcode": "Re-encode (slow but reliable)"
+  },
+
+  "strategy": {
+    "shortClipsDetected": "Very short clips detected (< {threshold} sec):",
+    "clipInfo": "Clip {number}: {duration} sec",
+    "mayCauseArtifacts": "This may cause artifacts or audio loss.",
+    "chooseAction": "Choose handling method:",
+    "fullTranscode": "Full re-encode (slow but high quality)"
+  },
+
+  "common": {
+    "continue": "Continue",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "files": "files",
+    "succeeded": "done",
+    "failed": "failed",
+    "selectFolder": "Select folder...",
+    "specifyOutputFolder": "Please specify output folder",
+    "sec": "sec"
+  },
+
+  "mediaInfo": {
+    "variableBitrate": "variable"
+  },
+
+  "errors": {
+    "ffmpegNotFound": "FFmpeg not found!",
+    "ffmpegNotFoundDesc": "FFmpeg is required. Install it and add to PATH, or configure path in settings.",
+    "ffprobeNotFound": "FFprobe not found!",
+    "genericError": "An error occurred: {error}"
+  }
+}

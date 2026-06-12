@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'clip.dart';
+import 'core/localization/app_localizations.dart';
 
 class ClipsTab extends StatelessWidget {
   final List<Clip> clips;
@@ -31,9 +32,9 @@ class ClipsTab extends StatelessWidget {
             children: [
               const Icon(Icons.content_cut, size: 20, color: Colors.orange),
               const SizedBox(width: 8),
-              const Text(
-                'Фрагменты видео',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                AppLocalizations.t('tabs.clips'),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const Spacer(),
               Container(
@@ -43,7 +44,7 @@ class ClipsTab extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${clips.length} всего, ${clips.where((c) => c.isVisible).length} видимых',
+                  AppLocalizations.t('timeline.clipsCount', {'count': '${clips.length}', 'visible': '${clips.where((c) => c.isVisible).length}'}),
                   style: const TextStyle(fontSize: 12),
                 ),
               ),
@@ -73,7 +74,7 @@ class ClipsTab extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Фрагмент ${index + 1}',
+                                AppLocalizations.t('timeline.clipNumber', {'number': '${index + 1}'}),
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: clip.isVisible ? Colors.white : Colors.grey,
@@ -91,8 +92,8 @@ class ClipsTab extends StatelessWidget {
                           ),
                         ),
                         if (!clip.isVisible)
-                          const Chip(
-                            label: Text('Удалён', style: TextStyle(fontSize: 10)),
+                          Chip(
+                            label: Text(AppLocalizations.t('timeline.delete'), style: const TextStyle(fontSize: 10)),
                             backgroundColor: Colors.red,
                             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
@@ -105,7 +106,7 @@ class ClipsTab extends StatelessWidget {
                             size: 20,
                             color: Colors.orange,
                           ),
-                          tooltip: clip.isVisible ? 'Удалить' : 'Восстановить',
+                          tooltip: clip.isVisible ? AppLocalizations.t('timeline.delete') : AppLocalizations.t('timeline.restore'),
                         ),
                       ],
                     ),

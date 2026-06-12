@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'core/localization/app_localizations.dart';
 
 class TrimTab extends StatefulWidget {
   final bool isEnabled;
@@ -73,15 +74,15 @@ class _TrimTabState extends State<TrimTab> {
                 },
                 activeColor: Colors.orange,
               ),
-              const Text('Включить обрезку', style: TextStyle(fontSize: 16)),
+              Text(AppLocalizations.t('trim.enable'), style: const TextStyle(fontSize: 16)),
             ],
           ),
           if (widget.isEnabled) ...[
             const SizedBox(height: 16),
             SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Оставить первые N секунд')),
-                ButtonSegment(value: 1, label: Text('Вырезать последние N секунд')),
+              segments: [
+                ButtonSegment(value: 0, label: Text(AppLocalizations.t('trim.keepFirst'))),
+                ButtonSegment(value: 1, label: Text(AppLocalizations.t('trim.removeLast'))),
               ],
               selected: {_trimMode},
               onSelectionChanged: (Set<int> newSelection) {
@@ -96,8 +97,8 @@ class _TrimTabState extends State<TrimTab> {
               controller: _secondsController,
               style: const TextStyle(color: Colors.white),
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                hintText: 'Секунд (1–1000)',
+              decoration: InputDecoration(
+                hintText: AppLocalizations.t('trim.secondsHint'),
                 hintStyle: TextStyle(color: Colors.grey),
                 border: OutlineInputBorder(),
               ),

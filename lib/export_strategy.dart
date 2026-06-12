@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'audio_track.dart';
 import 'clip.dart';
 import 'export_settings_tab.dart';
+import 'core/localization/app_localizations.dart';
 
 /// Абстрактный класс для стратегий экспорта
 abstract class ExportStrategy {
@@ -36,12 +36,13 @@ class ShortClipCheckResult {
   String getWarningMessage() {
     if (!hasShortClips) return '';
     final buffer = StringBuffer();
-    buffer.writeln('⚠️ Обнаружены очень короткие фрагменты (< $threshold сек):');
+    buffer.writeln(AppLocalizations.t('strategy.shortClipsDetected', {'threshold': '$threshold'}));
     for (int i = 0; i < shortClipIndices.length; i++) {
-      buffer.writeln('  Фрагмент ${shortClipIndices[i] + 1}: ${shortClipDurations[i].toStringAsFixed(3)} сек');
+      buffer.writeln('  ${AppLocalizations.t('strategy.clipInfo', {'number': '${shortClipIndices[i] + 1}', 'duration': shortClipDurations[i].toStringAsFixed(3)})}');
     }
-    buffer.writeln('\nЭто может привести к артефактам или потере звука.');
-    buffer.writeln('Выберите способ обработки:');
+    buffer.writeln();
+    buffer.writeln(AppLocalizations.t('strategy.mayCauseArtifacts'));
+    buffer.writeln(AppLocalizations.t('strategy.chooseAction'));
     return buffer.toString();
   }
 }

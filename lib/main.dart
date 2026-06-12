@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
-import 'home_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'app.dart';
 
-void main() => runApp(const SoViCutApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-class SoViCutApp extends StatelessWidget {
-  const SoViCutApp({super.key});
-  
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SoViCut',
-      theme: ThemeData.dark().copyWith(primaryColor: Colors.orange),
-      home: const HomeScreen(),
-      debugShowCheckedModeBanner: false,
-    );
-  }
+  runApp(
+    const ProviderScope(
+      child: SoViCutApp(),
+    ),
+  );
 }

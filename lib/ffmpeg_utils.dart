@@ -48,9 +48,9 @@ class FFmpegUtils {
       args.addAll(['-map', '0:v:$idx']);
     }
 
-    // Добавляем все аудиопотоки
-    for (final idx in indices['audio']!) {
-      args.addAll(['-map', '0:a:$idx']);
+    // Добавляем все аудиопотоки (0-based per-type индекс)
+    for (int i = 0; i < indices['audio']!.length; i++) {
+      args.addAll(['-map', '0:a:$i']);
     }
 
     return args;

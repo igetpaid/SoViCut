@@ -9,13 +9,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   path_provider: ^2.1.5
   file_picker: ^6.1.1
   desktop_drop: ^0.4.0
-  win32: ^5.5.0
   video_player: ^2.10.0
   video_player_win: ^3.0.0
   chewie: ^1.10.0
+  flutter_riverpod: ^2.6.1
 
 dev_dependencies:
   flutter_test:
@@ -26,3 +28,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+    - assets/locales/ru.json
+    - assets/locales/en.json

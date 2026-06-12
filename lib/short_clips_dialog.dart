@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'export_strategy.dart';
 import 'concat_strategy.dart';
 import 'transcode_strategy.dart';
+import 'core/localization/app_localizations.dart';
 
 class ShortClipsDialog extends StatelessWidget {
   final ShortClipCheckResult checkResult;
@@ -18,11 +19,11 @@ class ShortClipsDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.warning_amber, color: Colors.orange),
-          SizedBox(width: 8),
-          Text('Обнаружены короткие фрагменты'),
+          const Icon(Icons.warning_amber, color: Colors.orange),
+          const SizedBox(width: 8),
+          Text(AppLocalizations.t('dialog.shortClipsFound')),
         ],
       ),
       content: Column(
@@ -33,27 +34,27 @@ class ShortClipsDialog extends StatelessWidget {
           const SizedBox(height: 16),
           const Divider(),
           const SizedBox(height: 8),
-          const Text(
-            'Выберите способ обработки:',
-            style: TextStyle(fontWeight: FontWeight.bold),
+          Text(
+            AppLocalizations.t('dialog.chooseAction'),
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ],
       ),
       actions: [
         TextButton(
           onPressed: onCancel,
-          child: const Text('Отмена экспорта'),
+          child: Text(AppLocalizations.t('dialog.cancelExport')),
         ),
         ElevatedButton.icon(
           onPressed: () => onStrategySelected(ConcatStrategy()),
           icon: const Icon(Icons.speed),
-          label: const Text('Округление до ключевых кадров (быстро)'),
+          label: Text(AppLocalizations.t('dialog.roundToKeyframes')),
           style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
         ),
         ElevatedButton.icon(
           onPressed: () => onStrategySelected(TranscodeStrategy()),
           icon: const Icon(Icons.build),  // ← заменил Icons.quality на Icons.build
-          label: const Text('Перекодировать (медленно, но надёжно)'),
+          label: Text(AppLocalizations.t('dialog.transcode')),
           style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]),
         ),
       ],

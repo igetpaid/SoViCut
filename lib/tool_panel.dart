@@ -4,6 +4,7 @@ import 'audio_tab.dart';
 import 'export_settings_tab.dart';
 import 'clips_tab.dart';
 import 'audio_track.dart';
+import 'core/localization/app_localizations.dart';
 import 'clip.dart';
 
 class ToolPanel extends StatelessWidget {
@@ -61,12 +62,12 @@ class ToolPanel extends StatelessWidget {
         length: 4,
         child: Column(
           children: [
-            const TabBar(
+            TabBar(
               tabs: [
-                Tab(text: 'Обрезка'),
-                Tab(text: 'Аудио'),
-                Tab(text: 'Фрагменты'),
-                Tab(text: 'Экспорт'),
+                Tab(text: AppLocalizations.t('tabs.trim')),
+                Tab(text: AppLocalizations.t('tabs.audio')),
+                Tab(text: AppLocalizations.t('tabs.clips')),
+                Tab(text: AppLocalizations.t('tabs.export')),
               ],
               labelColor: Colors.orange,
               unselectedLabelColor: Colors.grey,
@@ -89,6 +90,7 @@ class ToolPanel extends StatelessWidget {
                     onTracksChanged: onAudioTracksChanged,
                     mixEnabled: mixEnabled,
                     onMixEnabledChanged: onMixEnabledChanged,
+                    inputPath: videoPath,
                   ),
                   ClipsTab(
                     clips: clips,

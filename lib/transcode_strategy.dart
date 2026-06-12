@@ -5,10 +5,11 @@ import 'clip.dart';
 import 'export_settings_tab.dart';
 import 'export_strategy.dart';
 import 'media_info_service.dart';
+import 'core/localization/app_localizations.dart';
 
 class TranscodeStrategy implements ExportStrategy {
   @override
-  String get name => 'Полное перекодирование (медленно, но качественно)';
+  String get name => AppLocalizations.t('strategy.fullTranscode');
 
   @override
   Future<bool> export({
@@ -23,12 +24,11 @@ class TranscodeStrategy implements ExportStrategy {
   }) async {
     // 1. Получаем оригинальные названия с корректными индексами
     final allStreams = await MediaInfoService.getAudioStreams(inputPath);
-    final Map<int, String> originalTitle = {};
-    for (final stream in allStreams) {
-      // ffprobe index (1,2,3) -> ffmpeg index (0,1,2)
-      originalTitle[stream.index - 1] = stream.title;
+    final Map<int, int> absoluteToPerType = {};
+    for (int i = 0; i < allStreams.length; i++) {
+      absoluteToPerType[allStreams[i].index] = i;
     }
-    print('Оригинальные названия (ffmpeg-индексы): $originalTitle');
+    print('Оригинальные названия аудиодорожек: ${allStreams.map((s) => '${s.index}: "${s.title}"').join(', ')}');
 
     // 2. Параметры экспорта
     final int defaultBitrate = await _getAudioBitrate(inputPath);
@@ -61,14 +61,14 @@ class TranscodeStrategy implements ExportStrategy {
         '-g', '12', '-keyint_min', '12',
       ];
 
-      // Аудио: какие дорожки обрабатывать
-      final enabledFfmpegIndices = audioTracks
+      // Аудио: какие дорожки обрабатывать (0-based per-type индексы)
+      final enabledAbsolute = audioTracks
           .where((t) => t.isEnabled)
-          .map((t) => t.index - 1)
+          .map((t) => t.index)
           .toList();
-      final List<int> indicesToProcess = enabledFfmpegIndices.isEmpty
-          ? List.generate(originalTitle.length, (i) => i)
-          : enabledFfmpegIndices;
+      final List<int> indicesToProcess = enabledAbsolute.isEmpty
+          ? List.generate(allStreams.length, (i) => i)
+          : enabledAbsolute.map((abs) => absoluteToPerType[abs]!).toList();
 
       if (mixAudio && indicesToProcess.length > 1) {
         // Смешивание
@@ -76,24 +76,26 @@ class TranscodeStrategy implements ExportStrategy {
         final List<String> mixInputs = [];
         final List<String> trackNames = [];
         for (int j = 0; j < indicesToProcess.length; j++) {
-          final ffIdx = indicesToProcess[j];
-          final origIdx = ffIdx + 1;
-          final track = audioTracks.firstWhere((t) => t.index == origIdx);
+          final perTypeIdx = indicesToProcess[j];
+          final track = audioTracks.firstWhere((t) => t.index == allStreams[perTypeIdx].index);
           final factor = track.volumePercent / 100;
-          final title = originalTitle[ffIdx] ?? 'Track ${ffIdx + 1}';
+          final title = allStreams[perTypeIdx].title.isNotEmpty
+              ? allStreams[perTypeIdx].title
+              : 'Track ${perTypeIdx + 1}';
           trackNames.add(title);
           if (factor != 1.0) {
-            filterParts.add('[0:a:$ffIdx]volume=${factor.toStringAsFixed(2)}[a$j]');
+            filterParts.add('[0:a:$perTypeIdx]volume=${factor.toStringAsFixed(2)}[a$j]');
             mixInputs.add('[a$j]');
           } else {
-            mixInputs.add('[0:a:$ffIdx]');
+            mixInputs.add('[0:a:$perTypeIdx]');
           }
         }
-        if (filterParts.isNotEmpty) {
-          args.addAll(['-filter_complex', filterParts.join('; ')]);
-        }
+        final combinedFilters = <String>[
+          ...filterParts,
+          '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]',
+        ];
         args.addAll([
-          '-filter_complex', '${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=longest[aout]',
+          '-filter_complex', combinedFilters.join('; '),
           '-map', '[aout]',
           '-metadata:s:a:0', 'title=Mixed: ${trackNames.join(" + ")}',
           '-c:a', audioCodec, '-b:a', '${audioBitrate}k',
@@ -102,9 +104,11 @@ class TranscodeStrategy implements ExportStrategy {
       } else {
         // Раздельные дорожки
         for (int j = 0; j < indicesToProcess.length; j++) {
-          final ffIdx = indicesToProcess[j];
-          args.addAll(['-map', '0:a:$ffIdx']);
-          final title = originalTitle[ffIdx] ?? 'Track ${ffIdx + 1}';
+          final perTypeIdx = indicesToProcess[j];
+          args.addAll(['-map', '0:a:$perTypeIdx']);
+          final title = allStreams[perTypeIdx].title.isNotEmpty
+              ? allStreams[perTypeIdx].title
+              : 'Track ${perTypeIdx + 1}';
           args.addAll(['-metadata:s:a:$j', 'title=$title']);
         }
         args.addAll([
@@ -155,10 +159,9 @@ class TranscodeStrategy implements ExportStrategy {
     concatArgs.addAll(['-c:v', 'copy', '-c:a', 'copy', '-movflags', '+faststart']);
 
     // Восстанавливаем оригинальные названия (обходим потерю метаданных при склейке)
-    for (int i = 0; i < audioCount; i++) {
-      final title = originalTitle[i] ?? '';
-      if (title.isNotEmpty) {
-        concatArgs.addAll(['-metadata:s:a:$i', 'title=$title']);
+    for (int i = 0; i < audioCount && i < allStreams.length; i++) {
+      if (allStreams[i].title.isNotEmpty) {
+        concatArgs.addAll(['-metadata:s:a:$i', 'title=${allStreams[i].title}']);
       }
     }
 
