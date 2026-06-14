@@ -97,17 +97,17 @@ class _TimelineBarState extends State<TimelineBar> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 48,
+      height: 40,
       color: AppColors.timelineBg,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
           _buildPlayButton(),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           _buildTimeDisplay(),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(child: _buildScrubBar()),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           _buildTotalTime(),
         ],
       ),

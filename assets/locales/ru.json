@@ -177,6 +177,17 @@
     "fullTranscode": "Полное перекодирование (медленно, но качественно)"
   },
 
+  "settings": {
+    "title": "Настройки",
+    "theme": "Тема оформления",
+    "themeLight": "Светлая",
+    "themeLightDesc": "Светлая тема для дневной работы",
+    "themeDark": "Тёмная",
+    "themeDarkDesc": "Классическая тёмная тема",
+    "themeTwilight": "Сумерки",
+    "themeTwilightDesc": "Сине-фиолетовая тема для комфортной работы"
+  },
+
   "common": {
     "continue": "Продолжить",
     "cancel": "Отмена",

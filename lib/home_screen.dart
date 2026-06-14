@@ -29,6 +29,7 @@ import 'providers/audio_provider.dart';
 import 'providers/video_provider.dart';
 import 'providers/clips_provider.dart';
 import 'providers/export_provider.dart';
+import 'ui/settings/settings_panel.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -264,6 +265,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   void _cancelExport() {
     _exportCancelled = true;
+  }
+
+  void _openSettings() {
+    showDialog(
+      context: context,
+      builder: (ctx) => const SettingsPanel(),
+    );
   }
 
   Future<void> _saveProject() async {
@@ -689,17 +697,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             children: [
               Expanded(
                 child: MainLayout(
-                  toolbar: Toolbar(
-                    currentMode: _appMode,
-                    onModeChanged: (mode) => setState(() => _appMode = mode),
-                    currentFileName: fileName,
-                    onFastExport: _exportFast,
-                    onQualityExport: _exportQuality,
-                    isExporting: _isLoading,
-                    onCloseVideo: _videoPath != null ? _onCloseVideo : null,
-                    onSaveProject: _videoPath != null ? _saveProject : null,
-                    onOpenProject: _openProject,
-                  ),
+                    toolbar: Toolbar(
+                      currentMode: _appMode,
+                      onModeChanged: (mode) => setState(() => _appMode = mode),
+                      currentFileName: fileName,
+                      onFastExport: _exportFast,
+                      onQualityExport: _exportQuality,
+                      isExporting: _isLoading,
+                      onCloseVideo: _videoPath != null ? _onCloseVideo : null,
+                      onSaveProject: _videoPath != null ? _saveProject : null,
+                      onOpenProject: _openProject,
+                      onOpenSettings: _openSettings,
+                    ),
                   preview: DropTarget(
                     onDragDone: (detail) {
                       if (detail.files.isNotEmpty) {

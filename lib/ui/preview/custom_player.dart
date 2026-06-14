@@ -96,11 +96,20 @@ class _CustomPlayerState extends State<CustomPlayer> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.video_library, size: 56, color: AppColors.textDim),
-          const SizedBox(height: 12),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.bgCard.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+            ),
+            child: Icon(Icons.video_library, size: 28, color: AppColors.textDim),
+          ),
+          const SizedBox(height: 16),
           Text(
             AppLocalizations.t('player.dropVideo'),
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 4),
           Text(
@@ -118,7 +127,7 @@ class _CustomPlayerState extends State<CustomPlayer> {
       return const SizedBox.shrink();
     }
     final isPlaying = widget.controller!.value.isPlaying;
-    return Center(
+    return Positioned.fill(
       child: GestureDetector(
         onTap: () {
           if (isPlaying) {
@@ -129,16 +138,21 @@ class _CustomPlayerState extends State<CustomPlayer> {
           setState(() {});
         },
         child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.5),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            isPlaying ? Icons.pause : Icons.play_arrow,
-            color: Colors.white,
-            size: 32,
+          color: Colors.transparent,
+          alignment: Alignment.center,
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.4),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
+            ),
+            child: Icon(
+              isPlaying ? Icons.pause : Icons.play_arrow,
+              color: Colors.white,
+              size: 24,
+            ),
           ),
         ),
       ),

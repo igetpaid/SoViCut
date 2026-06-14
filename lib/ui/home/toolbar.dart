@@ -14,6 +14,7 @@ class Toolbar extends StatelessWidget {
   final VoidCallback? onCloseVideo;
   final VoidCallback? onSaveProject;
   final VoidCallback? onOpenProject;
+  final VoidCallback? onOpenSettings;
 
   const Toolbar({
     super.key,
@@ -26,6 +27,7 @@ class Toolbar extends StatelessWidget {
     this.onCloseVideo,
     this.onSaveProject,
     this.onOpenProject,
+    this.onOpenSettings,
   });
 
   @override
@@ -53,6 +55,8 @@ class Toolbar extends StatelessWidget {
             _iconButton(Icons.save, AppLocalizations.t('menu.saveProject'), onSaveProject),
           ],
           const Spacer(),
+          _iconButton(Icons.settings, AppLocalizations.t('menu.settings'), onOpenSettings),
+          const SizedBox(width: 8),
           _buildExportButton(),
         ],
       ),
@@ -228,7 +232,7 @@ class Toolbar extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 label,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.bgDark),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.bgDark),
               ),
             ],
           ),

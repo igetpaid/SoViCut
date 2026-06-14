@@ -29,22 +29,23 @@ class MainLayout extends StatelessWidget {
                   Expanded(
                     flex: 7,
                     child: Container(
-                      margin: const EdgeInsets.all(4),
+                      margin: const EdgeInsets.fromLTRB(4, 4, 2, 4),
                       decoration: BoxDecoration(
                         color: Colors.black,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.border, width: 1),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: preview,
                     ),
                   ),
                   SizedBox(
-                    width: 320,
+                    width: 300,
                     child: Container(
-                      margin: const EdgeInsets.fromLTRB(0, 4, 4, 4),
+                      margin: const EdgeInsets.fromLTRB(2, 4, 4, 4),
                       decoration: BoxDecoration(
                         color: AppColors.bgSurface,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: AppColors.border),
                       ),
                       clipBehavior: Clip.hardEdge,

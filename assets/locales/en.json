@@ -177,6 +177,17 @@
     "fullTranscode": "Full re-encode (slow but high quality)"
   },
 
+  "settings": {
+    "title": "Settings",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeLightDesc": "Light theme for daytime work",
+    "themeDark": "Dark",
+    "themeDarkDesc": "Classic dark theme",
+    "themeTwilight": "Twilight",
+    "themeTwilightDesc": "Blue-purple theme for comfortable work"
+  },
+
   "common": {
     "continue": "Continue",
     "cancel": "Cancel",

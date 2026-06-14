@@ -20,7 +20,7 @@ class BatchScreen extends ConsumerWidget {
       child: Column(
         children: [
           _buildToolbar(context, state, notifier),
-          const Divider(height: 1, color: AppColors.border),
+          Divider(height: 1, color: AppColors.border),
           Expanded(
             child: Row(
               children: [
