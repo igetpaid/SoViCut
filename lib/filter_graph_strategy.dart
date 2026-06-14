@@ -7,10 +7,17 @@ import 'export_settings_tab.dart';
 import 'export_strategy.dart';
 import 'ffmpeg_utils.dart';
 import 'media_info_service.dart';
+import 'services/debug/export_logger.dart';
 import 'core/localization/app_localizations.dart';
 
 class FilterGraphStrategy implements ExportStrategy {
   final bool useFastPreset;
+
+  /// Путь к последнему логу экспорта (заполняется после каждого export, даже при успехе).
+  static String? lastLogPath;
+
+  /// Последняя ошибка экспорта (текст из stderr, если exitCode != 0).
+  static String? lastError;
 
   FilterGraphStrategy({this.useFastPreset = false});
 
@@ -30,7 +37,55 @@ class FilterGraphStrategy implements ExportStrategy {
     void Function(double progress, String stage)? onProgress,
     bool Function()? isCancelled,
   }) async {
+    final logger = await ExportLogger.create(label: name.replaceAll(' ', '_'));
+    lastLogPath = logger.file.path;
+    lastError = null;
+
+    try {
+      return await _doExport(
+        inputPath: inputPath,
+        outputPath: outputPath,
+        audioTracks: audioTracks,
+        mixAudio: mixAudio,
+        trimSeconds: trimSeconds,
+        trimMode: trimMode,
+        clips: clips,
+        exportSettings: exportSettings,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+        logger: logger,
+      );
+    } catch (e, stack) {
+      logger.section('Unhandled Exception');
+      logger.log('$e');
+      logger.log(stack.toString());
+      lastError = e.toString();
+      return false;
+    } finally {
+      await logger.close();
+    }
+  }
+
+  Future<bool> _doExport({
+    required String inputPath,
+    required String outputPath,
+    required List<AudioTrack> audioTracks,
+    required bool mixAudio,
+    double? trimSeconds,
+    int? trimMode,
+    required List<Clip> clips,
+    ExportSettings? exportSettings,
+    void Function(double progress, String stage)? onProgress,
+    bool Function()? isCancelled,
+    required ExportLogger logger,
+  }) async {
     if (isCancelled != null && isCancelled()) return false;
+
+    logger.section('Export Start');
+    logger.header('Mode', name);
+    logger.header('Input', inputPath);
+    logger.header('Output', outputPath);
+
     onProgress?.call(0, AppLocalizations.t('export.preparing'));
 
     final allStreams = await MediaInfoService.getAudioStreams(inputPath);
@@ -39,8 +94,19 @@ class FilterGraphStrategy implements ExportStrategy {
       absoluteToPerType[allStreams[i].index] = i;
     }
 
+    logger.section('Audio Streams (from file)');
+    for (final s in allStreams) {
+      logger.log('  index=${s.index} language=${s.language} title="${s.title}"');
+    }
+
     final visibleClips = clips.where((c) => c.duration > 0 && c.isVisible).toList();
     if (visibleClips.isEmpty) return false;
+
+    logger.section('Clips (visible)');
+    for (int i = 0; i < visibleClips.length; i++) {
+      final c = visibleClips[i];
+      logger.log('  [$i] start=${c.startTime} end=${c.endTime} duration=${c.duration}');
+    }
 
     final int defaultBitrate = await _getAudioBitrate(inputPath);
     final int audioBitrate = exportSettings?.audioBitrate ?? (defaultBitrate ~/ 1000);
@@ -50,6 +116,16 @@ class FilterGraphStrategy implements ExportStrategy {
     final String videoCodec = exportSettings?.videoCodecName ?? 'libx264';
     final int crf = exportSettings?.crf ?? 23;
 
+    logger.section('Export Settings');
+    logger.header('Video codec', videoCodec);
+    logger.header('Preset', useFastPreset ? 'ultrafast' : 'medium');
+    logger.header('CRF', crf.toString());
+    logger.header('Audio codec', audioCodec);
+    logger.header('Audio bitrate', '${audioBitrate}k');
+    logger.header('Sample rate', sampleRate.toString());
+    logger.header('Channels', channels.toString());
+    logger.header('Mix audio', mixAudio.toString());
+
     final enabledAbsolute = audioTracks
         .where((t) => t.isEnabled)
         .map((t) => t.index)
@@ -58,6 +134,11 @@ class FilterGraphStrategy implements ExportStrategy {
         ? <int>[]
         : enabledAbsolute.map((abs) => absoluteToPerType[abs]!).toList();
     final hasAudio = enabledPerType.isNotEmpty;
+
+    logger.section('Audio Tracks (enabled)');
+    for (final t in audioTracks) {
+      logger.log('  index=${t.index} name="${t.name}" enabled=${t.isEnabled} volume=${t.volumePercent}%');
+    }
 
     final totalOutputDuration =
         visibleClips.fold<double>(0.0, (s, c) => s + c.duration);
@@ -126,7 +207,11 @@ class FilterGraphStrategy implements ExportStrategy {
       }
     }
 
-    // Build ffmpeg args
+    // Log filter complex
+    logger.section('Filter Complex');
+    logger.log(filterParts.join(';\n'));
+
+    // Build full ffmpeg args
     final List<String> args = [
       '-i', inputPath,
       '-filter_complex', filterParts.join(';'),
@@ -193,6 +278,7 @@ class FilterGraphStrategy implements ExportStrategy {
     args.addAll(['-movflags', '+faststart', '-y', outputPath]);
 
     // Run single ffmpeg process
+    logger.section('FFmpeg Execution');
     final progressTotal = enableTrim && trimDuration > 0 ? trimDuration : totalOutputDuration;
     final cancelNotifier = isCancelled != null ? ValueNotifier<bool>(false) : null;
     Timer? cancelTimer;
@@ -208,14 +294,20 @@ class FilterGraphStrategy implements ExportStrategy {
         onProgress?.call(0.05 + p * 0.94, AppLocalizations.t('export.encoding'));
       },
       cancel: cancelNotifier,
+      logger: logger,
     );
     cancelTimer?.cancel();
-    if (exitCode != 0) {
-      return false;
+
+    logger.section('Result');
+    if (exitCode == 0) {
+      logger.header('Exit code', '0 (success)');
+      onProgress?.call(1, AppLocalizations.t('export.success'));
+      return true;
     }
 
-    onProgress?.call(1, AppLocalizations.t('export.success'));
-    return true;
+    logger.header('Exit code', exitCode.toString());
+    lastError = 'ffmpeg exited with code $exitCode — see log for stderr details';
+    return false;
   }
 
   static Future<int> _getAudioBitrate(String path) async {

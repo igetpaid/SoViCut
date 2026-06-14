@@ -239,6 +239,7 @@
     "noReencode": "Video will be copied without re-encoding",
     "success": "Export complete!",
     "error": "Export error",
+    "errorLog": "Details written to log",
     "notLoaded": "Video not loaded",
     "presets": "Presets"
   },

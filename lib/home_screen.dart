@@ -251,15 +251,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       _isExporting = false;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          success
-              ? '${AppLocalizations.t('export.success')}\n$outPath'
-              : AppLocalizations.t('export.error'),
+    if (!success) {
+      final logPath = FilterGraphStrategy.lastLogPath;
+      final errMsg = logPath != null
+          ? '${AppLocalizations.t('export.error')}\n${AppLocalizations.t('export.errorLog')}: $logPath'
+          : AppLocalizations.t('export.error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errMsg),
+          duration: const Duration(seconds: 10),
+          action: logPath != null
+              ? SnackBarAction(label: 'log', onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Log: $logPath')),
+                  );
+                })
+              : null,
         ),
-      ),
-    );
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppLocalizations.t('export.success')}\n$outPath'),
+        ),
+      );
+    }
   }
 
   void _cancelExport() {

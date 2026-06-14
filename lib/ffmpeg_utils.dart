@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'services/debug/export_logger.dart';
 
 class FFmpegUtils {
   /// Анализирует видеофайл и возвращает Map с информацией о потоках.
@@ -64,12 +65,14 @@ class FFmpegUtils {
   /// [totalDuration] — общая длительность в секундах для расчёта процента.
   /// [onProgress] — callback с прогрессом 0.0–1.0.
   /// [cancel] — когда становится true, процесс ffmpeg убивается.
+  /// [logger] — опциональный логгер (все stderr/stdout пишутся туда).
   /// Возвращает exit code (или -1 если отменён).
   static Future<int> runWithProgress({
     required List<String> args,
     required double totalDuration,
     void Function(double progress)? onProgress,
     ValueNotifier<bool>? cancel,
+    ExportLogger? logger,
   }) async {
     final progressArgs = [
       ...args,
@@ -77,20 +80,28 @@ class FFmpegUtils {
       '-nostats',
     ];
 
+    logger?.log('Starting ffmpeg process...');
+    logger?.command('ffmpeg', progressArgs);
+
     final process = await Process.start('ffmpeg', progressArgs,
         runInShell: true,
     );
 
     cancel?.addListener(() {
       if (cancel.value) {
+        logger?.log('Cancel requested — killing process');
         process.kill();
       }
     });
+
+    final stdoutDone = Completer<void>();
+    final stderrDone = Completer<void>();
 
     process.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) {
+      logger?.stdout(line);
       if (line.startsWith('out_time_us=')) {
         final us = int.tryParse(line.split('=')[1]);
         if (us != null && totalDuration > 0) {
@@ -98,18 +109,20 @@ class FFmpegUtils {
           onProgress?.call(progress);
         }
       }
-    });
+    }, onDone: () => stdoutDone.complete());
 
     process.stderr
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) {
       if (line.trim().isNotEmpty) {
+        logger?.stderr(line);
         print('[ffmpeg] $line');
       }
-    });
+    }, onDone: () => stderrDone.complete());
 
     final code = await process.exitCode;
+    await Future.wait([stdoutDone.future, stderrDone.future]);
     if (cancel?.value == true) return -1;
     return code;
   }

@@ -104,6 +104,7 @@
     "noReencode": "Video will be copied without re-encoding",
     "success": "Exporting... 100%",
     "error": "Export error",
+    "errorLog": "Details written to log",
     "notLoaded": "Video not loaded",
     "presets": "Presets",
     "preparing": "Preparing...",
