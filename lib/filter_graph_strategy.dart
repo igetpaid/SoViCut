@@ -37,7 +37,10 @@ class FilterGraphStrategy implements ExportStrategy {
     void Function(double progress, String stage)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    final logger = await ExportLogger.create(label: name.replaceAll(' ', '_'));
+    final logger = await ExportLogger.create(
+      label: name.replaceAll(' ', '_'),
+      logDir: '${Directory.current.path}\\logs',
+    );
     lastLogPath = logger.file.path;
     lastError = null;
 
@@ -153,7 +156,7 @@ class FilterGraphStrategy implements ExportStrategy {
     for (int i = 0; i < n; i++) {
       final c = visibleClips[i];
       filterParts.add(
-        '[0:v]trim=start=${c.startTime}:end=${c.endTime},setpts=PTS-STARTPRES[v$i]',
+        '[0:v]trim=start=${c.startTime}:end=${c.endTime},setpts=PTS-STARTPTS[v$i]',
       );
     }
     // Concat only if >1 segment (concat filter requires n>=2)
@@ -179,7 +182,7 @@ class FilterGraphStrategy implements ExportStrategy {
         for (int i = 0; i < n; i++) {
           final c = visibleClips[i];
           filterParts.add(
-            '[0:a:$perTypeIdx]atrim=start=${c.startTime}:end=${c.endTime},asetpts=PTS-STARTPRES[a${j}_$i]',
+            '[0:a:$perTypeIdx]atrim=start=${c.startTime}:end=${c.endTime},asetpts=PTS-STARTPTS[a${j}_$i]',
           );
         }
 

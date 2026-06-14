@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 
 class ExportLogger {
   final File file;
@@ -9,9 +8,8 @@ class ExportLogger {
 
   ExportLogger._(this.file, this._sink);
 
-  static Future<ExportLogger> create({String? label}) async {
-    final support = await getApplicationSupportDirectory();
-    final dir = Directory('${support.path}\\debug\\exports');
+  static Future<ExportLogger> create({String? label, String? logDir}) async {
+    final dir = Directory(logDir ?? '${Directory.current.path}\\logs');
     if (!await dir.exists()) await dir.create(recursive: true);
     final ts = _formatFilenameDate(DateTime.now());
     final safeLabel = (label ?? '').replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
