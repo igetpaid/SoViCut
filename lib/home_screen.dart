@@ -13,8 +13,7 @@ import 'ffmpeg_service.dart';
 import 'tool_panel.dart';
 import 'export_settings_tab.dart';
 import 'export_strategy.dart';
-import 'concat_strategy.dart';
-import 'transcode_strategy.dart';
+import 'filter_graph_strategy.dart';
 import 'services/ffmpeg/ffmpeg_detection_service.dart';
 import 'services/ffmpeg/thumbnail_service.dart';
 import 'ui/home/toolbar.dart';
@@ -409,12 +408,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   Future<void> _exportFast() async {
     if (_videoPath == null) return;
-    await _exportWithStrategy(ConcatStrategy());
+    await _exportWithStrategy(FilterGraphStrategy(useFastPreset: true));
   }
 
   Future<void> _exportQuality() async {
     if (_videoPath == null) return;
-    await _exportWithStrategy(TranscodeStrategy());
+    await _exportWithStrategy(FilterGraphStrategy(useFastPreset: false));
   }
 
   Future<void> _pickVideo() async {
