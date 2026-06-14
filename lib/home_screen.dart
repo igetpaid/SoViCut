@@ -14,7 +14,7 @@ import 'tool_panel.dart';
 import 'export_settings_tab.dart';
 import 'export_strategy.dart';
 import 'concat_strategy.dart';
-import 'short_clips_dialog.dart';
+import 'transcode_strategy.dart';
 import 'services/ffmpeg/ffmpeg_detection_service.dart';
 import 'services/ffmpeg/thumbnail_service.dart';
 import 'ui/home/toolbar.dart';
@@ -37,19 +37,20 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with SingleTickerProviderStateMixin {
   String? _videoPath;
   List<AudioTrack> _audioTracks = [];
   List<Clip> _clips = [];
   bool _isLoading = false;
-  
+
   bool _trimEnabled = false;
   double _trimSeconds = 10;
   int _trimMode = 0;
-  
+
   bool _audioEnabled = false;
   bool _mixTracks = false;
-  
+
   int _originalAudioBitrate = 192000;
   int _originalSampleRate = 48000;
   int _originalChannels = 2;
@@ -58,14 +59,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     originalSampleRate: 48000,
     originalChannels: 2,
   );
-  
+
   double _previewPosition = 0;
   VideoPlayerController? _videoController;
   bool _isPlaying = false;
   int? _selectedClipIndex;
   AppMode _appMode = AppMode.single;
   List<ThumbnailEntry> _thumbnailEntries = [];
-  final FocusNode _hotkeyNode = FocusNode();
+  late TabController _tabController;
 
   // Export progress (non-blocking)
   bool _isExporting = false;
@@ -76,15 +77,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 4, vsync: this);
     _checkFfmpeg();
     _syncFromProviders();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _hotkeyNode.requestFocus());
+    HardwareKeyboard.instance.addHandler(_onKeyEvent);
   }
 
   @override
   void dispose() {
-    _hotkeyNode.dispose();
+    HardwareKeyboard.instance.removeHandler(_onKeyEvent);
+    _tabController.dispose();
     super.dispose();
+  }
+
+  bool _onKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    if (_appMode == AppMode.batch) return false;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.keyS) {
+      _splitCurrentClip();
+      return true;
+    }
+    if (key == LogicalKeyboardKey.keyD) {
+      if (_selectedClipIndex != null && _selectedClipIndex! < _clips.length) {
+        _deleteClip(_selectedClipIndex!);
+      }
+      return true;
+    }
+    if (key == LogicalKeyboardKey.keyA) {
+      if (_selectedClipIndex != null && _selectedClipIndex! < _clips.length) {
+        _restoreClip(_selectedClipIndex!);
+      }
+      return true;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _onSeekStep(true);
+      return true;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _onSeekStep(false);
+      return true;
+    }
+    return false;
   }
 
   void _syncFromProviders() {
@@ -119,9 +153,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(AppLocalizations.t('errors.ffmpegNotFound')),
-          content: Text(
-            AppLocalizations.t('errors.ffmpegNotFoundDesc'),
-          ),
+          content: Text(AppLocalizations.t('errors.ffmpegNotFoundDesc')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -177,25 +209,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// Преобразует долю полного видео в абсолютное время для плеера.
 
-  /// Проверяет наличие коротких фрагментов (< 0.5 сек)
-  ShortClipCheckResult _checkShortClips() {
-    final List<int> shortIndices = [];
-    final List<double> shortDurations = [];
-    for (int i = 0; i < _clips.length; i++) {
-      final clip = _clips[i];
-      if (clip.isVisible && clip.duration < 0.5) {
-        shortIndices.add(i);
-        shortDurations.add(clip.duration);
-      }
-    }
-    return ShortClipCheckResult(
-      hasShortClips: shortIndices.isNotEmpty,
-      shortClipIndices: shortIndices,
-      shortClipDurations: shortDurations,
-      threshold: 0.5,
-    );
-  }
-
   Future<void> _exportWithStrategy(ExportStrategy strategy) async {
     if (_videoPath == null) return;
 
@@ -239,7 +252,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? '${AppLocalizations.t('export.success')}\n$outPath' : AppLocalizations.t('export.error'))),
+      SnackBar(
+        content: Text(
+          success
+              ? '${AppLocalizations.t('export.success')}\n$outPath'
+              : AppLocalizations.t('export.error'),
+        ),
+      ),
     );
   }
 
@@ -283,9 +302,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success
-              ? AppLocalizations.t('project.saveSuccess')
-              : AppLocalizations.t('project.error')),
+          content: Text(
+            success
+                ? AppLocalizations.t('project.saveSuccess')
+                : AppLocalizations.t('project.error'),
+          ),
         ),
       );
     }
@@ -314,7 +335,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         final locate = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: Text(AppLocalizations.t('project.fileNotFound', {'path': data.videoPath})),
+            title: Text(
+              AppLocalizations.t('project.fileNotFound', {
+                'path': data.videoPath,
+              }),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -328,7 +353,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         );
         if (locate == true) {
-          final pickResult = await FilePicker.platform.pickFiles(type: FileType.video);
+          final pickResult = await FilePicker.platform.pickFiles(
+            type: FileType.video,
+          );
           if (pickResult == null || pickResult.files.isEmpty) return;
           final newPath = pickResult.files.first.path!;
           await _loadVideo(newPath);
@@ -356,9 +383,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     if (_videoController != null) {
-      _videoController!.seekTo(Duration(
-        milliseconds: (_previewPosition * _getTotalDuration() * 1000).toInt(),
-      ));
+      _videoController!.seekTo(
+        Duration(
+          milliseconds: (_previewPosition * _getTotalDuration() * 1000).toInt(),
+        ),
+      );
     }
 
     _syncToProviders();
@@ -370,31 +399,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  Future<void> _export() async {
+  Future<void> _exportFast() async {
     if (_videoPath == null) return;
-    
-    final shortClipsCheck = _checkShortClips();
-    
-    if (shortClipsCheck.hasShortClips) {
-      // Показываем диалог выбора стратегии
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => ShortClipsDialog(
-          checkResult: shortClipsCheck,
-          onStrategySelected: (strategy) {
-            Navigator.pop(context);
-            _exportWithStrategy(strategy);
-          },
-          onCancel: () {
-            Navigator.pop(context);
-          },
-        ),
-      );
-    } else {
-      // Нет коротких фрагментов — используем стандартную стратегию ConcatStrategy
-      await _exportWithStrategy(ConcatStrategy());
-    }
+    await _exportWithStrategy(ConcatStrategy());
+  }
+
+  Future<void> _exportQuality() async {
+    if (_videoPath == null) return;
+    await _exportWithStrategy(TranscodeStrategy());
   }
 
   Future<void> _pickVideo() async {
@@ -459,7 +471,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${AppLocalizations.t('player.error')}: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('${AppLocalizations.t('player.error')}: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -467,7 +482,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _generateThumbnails(String path, double duration) async {
-    final tempDir = '${Directory.systemTemp.path}\\sovicut_thumbs_${DateTime.now().millisecondsSinceEpoch}';
+    final tempDir =
+        '${Directory.systemTemp.path}\\sovicut_thumbs_${DateTime.now().millisecondsSinceEpoch}';
     final entries = await ThumbnailService.generateThumbnails(
       videoPath: path,
       outputDir: tempDir,
@@ -486,7 +502,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       setState(() {
         _isPlaying = controller.value.isPlaying;
         if (controller.value.duration.inMilliseconds > 0) {
-          final fullFraction = controller.value.position.inMilliseconds /
+          final fullFraction =
+              controller.value.position.inMilliseconds /
               controller.value.duration.inMilliseconds;
           _previewPosition = fullFraction;
         }
@@ -505,35 +522,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<double> _getVideoDuration(String path) async {
-    final result = await Process.run(
-      'ffprobe',
-      [
-        '-v', 'error',
-        '-show_entries', 'format=duration',
-        '-of', 'default=noprint_wrappers=1:nokey=1',
-        path
-      ],
-      runInShell: true,
-    );
+    final result = await Process.run('ffprobe', [
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
+      path,
+    ], runInShell: true);
     return double.parse(result.stdout.toString().trim());
   }
 
   Future<AudioInfo> _getAudioInfo(String path) async {
-    final result = await Process.run(
-      'ffprobe',
-      [
-        '-v', 'error',
-        '-show_entries', 'stream=codec_type,bit_rate,sample_rate,channels',
-        '-of', 'default=noprint_wrappers=1',
-        path
-      ],
-      runInShell: true,
-    );
-    
+    final result = await Process.run('ffprobe', [
+      '-v',
+      'error',
+      '-show_entries',
+      'stream=codec_type,bit_rate,sample_rate,channels',
+      '-of',
+      'default=noprint_wrappers=1',
+      path,
+    ], runInShell: true);
+
     int bitrate = 192000;
     int sampleRate = 48000;
     int channels = 2;
-    
+
     final lines = result.stdout.toString().split('\n');
     for (int i = 0; i < lines.length; i++) {
       if (lines[i].contains('codec_type=audio')) {
@@ -552,8 +567,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         break;
       }
     }
-    
-    return AudioInfo(bitrate: bitrate, sampleRate: sampleRate, channels: channels);
+
+    return AudioInfo(
+      bitrate: bitrate,
+      sampleRate: sampleRate,
+      channels: channels,
+    );
   }
 
   void _splitCurrentClip() {
@@ -566,7 +585,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final currentTime = _previewPosition * _getTotalDuration();
       if (currentTime >= accum && currentTime <= clipEnd) {
         final splitTimeInClip = currentTime - accum;
-        if (splitTimeInClip < 0.1 || clip.duration - splitTimeInClip < 0.1) return; // too close to edge
+        if (splitTimeInClip < 0.1 || clip.duration - splitTimeInClip < 0.1) {
+          return; // too close to edge
+        }
         setState(() {
           final newClip = Clip(
             id: _nextClipId,
@@ -594,6 +615,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _clips[clipIndex].isVisible = false;
     });
     _syncToProviders();
+    _tabController.animateTo(2);
   }
 
   void _restoreClip(int clipIndex) {
@@ -602,6 +624,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _clips[clipIndex].isVisible = true;
     });
     _syncToProviders();
+    _tabController.animateTo(2);
   }
 
   void _onCloseVideo() {
@@ -629,11 +652,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<String> _getUniqueFilePath(String directory, String baseName) async {
     final editedName = '${baseName}_edited.mp4';
     String candidatePath = '$directory\\$editedName';
-    
+
     if (!await File(candidatePath).exists()) {
       return candidatePath;
     }
-    
+
     int counter = 1;
     while (true) {
       final candidateName = '${baseName}_edited_$counter.mp4';
@@ -660,113 +683,100 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final fileName = _videoPath?.split('\\').last.split('/').last;
     final total = _getTotalDuration();
 
-    return Listener(
-      onPointerDown: (_) => _hotkeyNode.requestFocus(),
-      child: Focus(
-        focusNode: _hotkeyNode,
-      child: CallbackShortcuts(
-        bindings: {
-          SingleActivator(LogicalKeyboardKey.keyS): _clips.isNotEmpty ? _splitCurrentClip : () {},
-          SingleActivator(LogicalKeyboardKey.keyD): () {
-            if (_selectedClipIndex != null && _selectedClipIndex! < _clips.length) {
-              _deleteClip(_selectedClipIndex!);
-            }
-          },
-          SingleActivator(LogicalKeyboardKey.keyA): () {
-            if (_selectedClipIndex != null && _selectedClipIndex! < _clips.length) {
-              _restoreClip(_selectedClipIndex!);
-            }
-          },
-          SingleActivator(LogicalKeyboardKey.arrowRight): () => _onSeekStep(true),
-          SingleActivator(LogicalKeyboardKey.arrowLeft): () => _onSeekStep(false),
-        },
-        child: _appMode == AppMode.batch
-            ? Scaffold(body: BatchScreen())
-            : Column(
-          children: [
-            Expanded(
-              child: MainLayout(
-                toolbar: Toolbar(
-        currentMode: _appMode,
-        onModeChanged: (mode) => setState(() => _appMode = mode),
-        currentFileName: fileName,
-        onExport: _export,
-        isExporting: _isLoading,
-        onCloseVideo: _videoPath != null ? _onCloseVideo : null,
-        onSaveProject: _videoPath != null ? _saveProject : null,
-        onOpenProject: _openProject,
-      ),
-      preview: DropTarget(
-        onDragDone: (detail) {
-          if (detail.files.isNotEmpty) {
-            _loadVideo(detail.files.first.path);
-          }
-        },
-        child: CustomPlayer(
-          controller: _videoController,
-          hasAudioChanges: _audioEnabled,
-          onTapEmpty: _pickVideo,
-        ),
-      ),
-      rightPanel: ToolPanel(
-        trimEnabled: _trimEnabled,
-        onTrimEnabledChanged: (val) => setState(() => _trimEnabled = val),
-        onTrimChanged: (seconds, mode) {
-          setState(() {
-            _trimSeconds = seconds;
-            _trimMode = mode;
-          });
-        },
-        trimSeconds: _trimSeconds,
-        trimMode: _trimMode,
-        audioEnabled: _audioEnabled,
-        onAudioEnabledChanged: (val) => setState(() => _audioEnabled = val),
-        audioTracks: _audioTracks,
-        onAudioTracksChanged: (tracks) => setState(() => _audioTracks = tracks),
-        mixEnabled: _mixTracks,
-        onMixEnabledChanged: (val) => setState(() => _mixTracks = val),
-        clips: _clips,
-        videoPath: _videoPath,
-        onDeleteClip: _deleteClip,
-        onRestoreClip: _restoreClip,
-        onSelectClip: (index) => setState(() => _selectedClipIndex = index),
-        selectedClipIndex: _selectedClipIndex,
-        originalAudioBitrate: _originalAudioBitrate,
-        originalSampleRate: _originalSampleRate,
-        originalChannels: _originalChannels,
-        onExportSettingsChanged: (settings) {
-          setState(() {
-            _exportSettings = settings;
-          });
-        },
-      ),
-      timeline: TimelineBar(
-        clips: _clips,
-        totalDuration: total,
-        cursorPosition: _previewPosition,
-        selectedClipIndex: _selectedClipIndex,
-        currentTime: _previewPosition * total,
-        isPlaying: _isPlaying,
-        onPlayPause: _togglePlayPause,
-        onSeek: _onTimelineCursorMoved,
-        onSelectClip: (index) => setState(() => _selectedClipIndex = index),
-        thumbnails: _thumbnailEntries,
-      ),
-    ),
-            ),
-            if (_clips.isNotEmpty) _buildTimelineActions(),
-            if (_isExporting) _buildExportProgressBar(),
-            _buildStepSlider(),
-          ],
-        ),
-      ),
-    ),
-  );
+    return _appMode == AppMode.batch
+        ? Scaffold(body: BatchScreen())
+        : Column(
+            children: [
+              Expanded(
+                child: MainLayout(
+                  toolbar: Toolbar(
+                    currentMode: _appMode,
+                    onModeChanged: (mode) => setState(() => _appMode = mode),
+                    currentFileName: fileName,
+                    onFastExport: _exportFast,
+                    onQualityExport: _exportQuality,
+                    isExporting: _isLoading,
+                    onCloseVideo: _videoPath != null ? _onCloseVideo : null,
+                    onSaveProject: _videoPath != null ? _saveProject : null,
+                    onOpenProject: _openProject,
+                  ),
+                  preview: DropTarget(
+                    onDragDone: (detail) {
+                      if (detail.files.isNotEmpty) {
+                        _loadVideo(detail.files.first.path);
+                      }
+                    },
+                    child: CustomPlayer(
+                      controller: _videoController,
+                      hasAudioChanges: _audioEnabled,
+                      onTapEmpty: _pickVideo,
+                    ),
+                  ),
+                  rightPanel: ToolPanel(
+                    tabController: _tabController,
+                    trimEnabled: _trimEnabled,
+                    onTrimEnabledChanged: (val) =>
+                        setState(() => _trimEnabled = val),
+                    onTrimChanged: (seconds, mode) {
+                      setState(() {
+                        _trimSeconds = seconds;
+                        _trimMode = mode;
+                      });
+                    },
+                    trimSeconds: _trimSeconds,
+                    trimMode: _trimMode,
+                    audioEnabled: _audioEnabled,
+                    onAudioEnabledChanged: (val) =>
+                        setState(() => _audioEnabled = val),
+                    audioTracks: _audioTracks,
+                    onAudioTracksChanged: (tracks) =>
+                        setState(() => _audioTracks = tracks),
+                    mixEnabled: _mixTracks,
+                    onMixEnabledChanged: (val) =>
+                        setState(() => _mixTracks = val),
+                    clips: _clips,
+                    videoPath: _videoPath,
+                    onDeleteClip: _deleteClip,
+                    onRestoreClip: _restoreClip,
+                    onSelectClip: (index) =>
+                        setState(() => _selectedClipIndex = index),
+                    selectedClipIndex: _selectedClipIndex,
+                    originalAudioBitrate: _originalAudioBitrate,
+                    originalSampleRate: _originalSampleRate,
+                    originalChannels: _originalChannels,
+                    onExportSettingsChanged: (settings) {
+                      setState(() {
+                        _exportSettings = settings;
+                      });
+                    },
+                  ),
+                  timeline: TimelineBar(
+                    clips: _clips,
+                    totalDuration: total,
+                    cursorPosition: _previewPosition,
+                    selectedClipIndex: _selectedClipIndex,
+                    currentTime: _previewPosition * total,
+                    isPlaying: _isPlaying,
+                    onPlayPause: _togglePlayPause,
+                    onSeek: _onTimelineCursorMoved,
+                    onSelectClip: (index) =>
+                        setState(() => _selectedClipIndex = index),
+                    thumbnails: _thumbnailEntries,
+                  ), // TimelineBar
+                ), // MainLayout
+              ), // Expanded
+              if (_clips.isNotEmpty) _buildTimelineActions(),
+              if (_isExporting) _buildExportProgressBar(),
+              _buildStepSlider(),
+            ],
+          );
   }
 
   Widget _buildTimelineActions() {
     final selIdx = _selectedClipIndex;
-    final clip = selIdx != null && selIdx < _clips.length ? _clips[selIdx] : null;
+    final clip = selIdx != null && selIdx < _clips.length
+        ? _clips[selIdx]
+        : null;
     return Container(
       height: 32,
       color: AppColors.timelineBg,
@@ -778,19 +788,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             label: 'Split',
             tooltip: 'Split (S)',
             onTap: _splitCurrentClip,
-            color: AppColors.textDim,
+            color: AppColors.accent,
           ),
           const SizedBox(width: 4),
           _actionsButton(
-            icon: clip != null && !clip.isVisible ? Icons.visibility : Icons.visibility_off,
-            label: clip == null ? 'Delete' : (clip.isVisible ? 'Delete' : 'Restore'),
-            tooltip: clip == null ? 'Select a clip' : (clip.isVisible ? 'Delete (D)' : 'Restore (A)'),
-            onTap: clip != null
-                ? (clip.isVisible
-                    ? () => _deleteClip(selIdx!)
-                    : () => _restoreClip(selIdx!))
+            icon: Icons.visibility_off,
+            label: 'Delete',
+            tooltip: 'Delete (D)',
+            onTap: clip != null && clip.isVisible
+                ? () => _deleteClip(selIdx!)
                 : null,
             color: AppColors.error,
+          ),
+          const SizedBox(width: 4),
+          _actionsButton(
+            icon: Icons.visibility,
+            label: 'Restore',
+            tooltip: 'Restore (A)',
+            onTap: clip != null && !clip.isVisible
+                ? () => _restoreClip(selIdx!)
+                : null,
+            color: const Color(0xFF4CAF50),
           ),
         ],
       ),
@@ -819,7 +837,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 12, color: onTap != null ? color : color.withValues(alpha: 0.3)),
+              Icon(
+                icon,
+                size: 12,
+                color: onTap != null ? color : color.withValues(alpha: 0.3),
+              ),
               const SizedBox(width: 4),
               Text(
                 label,
@@ -858,7 +880,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 value: _exportProgress,
                 minHeight: 6,
                 backgroundColor: AppColors.border,
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.textSecondary),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppColors.textSecondary,
+                ),
               ),
             ),
           ),
@@ -884,7 +908,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          Text('Step:', style: TextStyle(fontSize: 10, color: AppColors.textDim)),
+          Text(
+            'Step:',
+            style: TextStyle(fontSize: 10, color: AppColors.textDim),
+          ),
           const SizedBox(width: 6),
           Expanded(
             child: Row(
@@ -902,17 +929,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onTap: () => setState(() => _seekStepSize = _stepSizes[i]),
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 2),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.textDim.withValues(alpha: 0.15) : Colors.transparent,
+                      color: isSelected
+                          ? AppColors.textDim.withValues(alpha: 0.15)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       label,
                       style: TextStyle(
                         fontSize: 10,
-                        color: isSelected ? AppColors.textSecondary : AppColors.textDim,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        color: isSelected
+                            ? AppColors.textSecondary
+                            : AppColors.textDim,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                   ),
@@ -949,5 +985,9 @@ class AudioInfo {
   final int bitrate;
   final int sampleRate;
   final int channels;
-  AudioInfo({required this.bitrate, required this.sampleRate, required this.channels});
+  AudioInfo({
+    required this.bitrate,
+    required this.sampleRate,
+    required this.channels,
+  });
 }

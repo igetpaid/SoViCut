@@ -10,7 +10,9 @@
     "openProject": "Open Project",
     "settings": "Settings",
     "about": "About",
-    "closeVideo": "Close video"
+    "closeVideo": "Close video",
+    "exportFast": "Fast",
+    "exportQuality": "Quality"
   },
 
   "player": {

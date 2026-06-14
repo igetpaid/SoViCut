@@ -132,7 +132,10 @@ class ConcatStrategy implements ExportStrategy {
               args.addAll(['-metadata:s:a:$j', 'title=${allStreams[perTypeIdx].title}']);
             }
           }
-          args.addAll(['-c:a', 'copy']);
+          args.addAll([
+            '-c:a', audioCodec, '-b:a', '${audioBitrate}k',
+            '-ar', sampleRate.toString(), '-ac', channels.toString(),
+          ]);
         }
       } else {
         args.addAll(['-an']);

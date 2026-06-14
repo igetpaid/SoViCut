@@ -8,6 +8,7 @@ import 'core/localization/app_localizations.dart';
 import 'clip.dart';
 
 class ToolPanel extends StatelessWidget {
+  final TabController tabController;
   final bool trimEnabled;
   final Function(bool) onTrimEnabledChanged;
   final Function(double, int) onTrimChanged;
@@ -35,6 +36,7 @@ class ToolPanel extends StatelessWidget {
   
   const ToolPanel({
     super.key,
+    required this.tabController,
     required this.trimEnabled,
     required this.onTrimEnabledChanged,
     required this.onTrimChanged,
@@ -62,12 +64,11 @@ class ToolPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: Colors.grey[900],
-      child: DefaultTabController(
-        length: 4,
-        child: Column(
-          children: [
-            TabBar(
-              tabs: [
+      child: Column(
+        children: [
+          TabBar(
+            controller: tabController,
+            tabs: [
                 Tab(text: AppLocalizations.t('tabs.trim')),
                 Tab(text: AppLocalizations.t('tabs.audio')),
                 Tab(text: AppLocalizations.t('tabs.clips')),
@@ -79,6 +80,7 @@ class ToolPanel extends StatelessWidget {
             ),
             Expanded(
               child: TabBarView(
+                controller: tabController,
                 children: [
                   TrimTab(
                     isEnabled: trimEnabled,
@@ -113,7 +115,6 @@ class ToolPanel extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }

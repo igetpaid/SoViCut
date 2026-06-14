@@ -10,7 +10,9 @@
     "openProject": "Открыть проект",
     "settings": "Настройки",
     "about": "О программе",
-    "closeVideo": "Закрыть видео"
+    "closeVideo": "Закрыть видео",
+    "exportFast": "Быстрый",
+    "exportQuality": "Качественный"
   },
 
   "player": {
