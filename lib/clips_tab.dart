@@ -68,7 +68,7 @@ class ClipsTab extends StatelessWidget {
               onTap: onSelect != null ? () => onSelect!(index) : null,
               child: Card(
               margin: const EdgeInsets.only(bottom: 8),
-              color: index == selectedIndex ? Colors.orange[900] : (clip.isVisible ? Colors.grey[800] : Colors.grey[800]!.withOpacity(0.4)),
+              color: index == selectedIndex ? Colors.orange[900] : (clip.isVisible ? Colors.grey[800] : Colors.grey[800]!.withValues(alpha: 0.4)),
               shape: index == selectedIndex
                   ? RoundedRectangleBorder(
                       side: BorderSide(color: Colors.orange, width: 1.5),

@@ -11,6 +11,8 @@ class Toolbar extends StatelessWidget {
   final VoidCallback onExport;
   final bool isExporting;
   final VoidCallback? onCloseVideo;
+  final VoidCallback? onSaveProject;
+  final VoidCallback? onOpenProject;
 
   const Toolbar({
     super.key,
@@ -20,6 +22,8 @@ class Toolbar extends StatelessWidget {
     required this.onExport,
     required this.isExporting,
     this.onCloseVideo,
+    this.onSaveProject,
+    this.onOpenProject,
   });
 
   @override
@@ -41,6 +45,10 @@ class Toolbar extends StatelessWidget {
             _buildFileName(),
             const SizedBox(width: 4),
             _iconButton(Icons.close, AppLocalizations.t('menu.closeVideo'), onCloseVideo),
+            const SizedBox(width: 8),
+            _iconButton(Icons.folder_open, AppLocalizations.t('menu.openProject'), onOpenProject),
+            const SizedBox(width: 4),
+            _iconButton(Icons.save, AppLocalizations.t('menu.saveProject'), onSaveProject),
           ],
           const Spacer(),
           _buildExportButton(),
@@ -108,7 +116,7 @@ class Toolbar extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: isActive ? AppColors.accent.withOpacity(0.15) : Colors.transparent,
+          color: isActive ? AppColors.accent.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(5),
         ),
         child: Row(

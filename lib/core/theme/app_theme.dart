@@ -41,7 +41,7 @@ class AppTheme {
           return AppColors.textDim;
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return AppColors.accent.withOpacity(0.3);
+          if (states.contains(WidgetState.selected)) return AppColors.accent.withValues(alpha: 0.3);
           return AppColors.border;
         }),
       ),
@@ -49,7 +49,7 @@ class AppTheme {
         activeTrackColor: AppColors.accent,
         inactiveTrackColor: AppColors.border,
         thumbColor: AppColors.accent,
-        overlayColor: AppColors.accent.withOpacity(0.12),
+        overlayColor: AppColors.accent.withValues(alpha: 0.12),
         trackHeight: 4,
       ),
       tabBarTheme: TabBarThemeData(

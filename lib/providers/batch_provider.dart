@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum BatchOp { trimFirst, trimLast, trimRange, containerSwap, audioExtract, audioNormalize }
+enum BatchOp { deleteFirst, deleteLast, trimFirst, trimLast, trimRange, containerSwap, audioExtract, audioNormalize }
 
 enum BatchStatus { idle, running, completed, cancelled, error }
 

@@ -49,6 +49,15 @@ class TranscodeStrategy implements ExportStrategy {
     final totalDuration = activeClips.fold<double>(0, (s, c) => s + c.duration);
     if (totalDuration <= 0) return false;
 
+    final enabledAbsolute = audioTracks
+        .where((t) => t.isEnabled)
+        .map((t) => t.index)
+        .toList();
+    final List<int> indicesToProcess = enabledAbsolute.isEmpty
+        ? List.generate(allStreams.length, (i) => i)
+        : enabledAbsolute.map((abs) => absoluteToPerType[abs]!).toList();
+    final enabledTitles = indicesToProcess.map((i) => allStreams[i].title).toList();
+
     final List<String> tempFiles = [];
     double cumulativeProgress = 0;
     bool success = true;
@@ -59,15 +68,6 @@ class TranscodeStrategy implements ExportStrategy {
       final clipFraction = clip.duration / totalDuration;
       final tempPath = '${(await getTemporaryDirectory()).path}\\temp_${DateTime.now().millisecondsSinceEpoch}_$i.mp4';
       tempFiles.add(tempPath);
-
-      // Determine which audio indices to process (same logic as ConcatStrategy)
-      final enabledAbsolute = audioTracks
-          .where((t) => t.isEnabled)
-          .map((t) => t.index)
-          .toList();
-      final List<int> indicesToProcess = enabledAbsolute.isEmpty
-          ? List.generate(allStreams.length, (i) => i)
-          : enabledAbsolute.map((abs) => absoluteToPerType[abs]!).toList();
 
       final List<String> args = [
         '-i', inputPath,
@@ -192,9 +192,9 @@ class TranscodeStrategy implements ExportStrategy {
     }
     concatArgs.addAll(['-c:v', 'copy', '-c:a', 'copy', '-movflags', '+faststart']);
 
-    for (int i = 0; i < audioCount && i < allStreams.length; i++) {
-      if (allStreams[i].title.isNotEmpty) {
-        concatArgs.addAll(['-metadata:s:a:$i', 'title=${allStreams[i].title}']);
+    for (int i = 0; i < audioCount && i < enabledTitles.length; i++) {
+      if (enabledTitles[i].isNotEmpty) {
+        concatArgs.addAll(['-metadata:s:a:$i', 'title=${enabledTitles[i]}']);
       }
     }
 

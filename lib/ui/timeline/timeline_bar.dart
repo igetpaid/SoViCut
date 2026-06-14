@@ -83,7 +83,7 @@ class _TimelineBarState extends State<TimelineBar> {
               child: Image.file(
                 thumbFile,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
             ),
           ),
@@ -124,7 +124,7 @@ class _TimelineBarState extends State<TimelineBar> {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color: AppColors.accent.withOpacity(0.15),
+            color: AppColors.accent.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(6),
           ),
           child: Icon(

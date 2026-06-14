@@ -39,7 +39,7 @@ class AudioStreamInfo {
   }
 
   String get bitrateText =>
-      bitrate > 0 ? '${bitrate} kbps' : AppLocalizations.t('mediaInfo.variableBitrate');
+      bitrate > 0 ? '$bitrate kbps' : AppLocalizations.t('mediaInfo.variableBitrate');
 
   Map<String, String> get metadata {
     final map = <String, String>{};
@@ -78,7 +78,7 @@ class VideoStreamInfo {
 
   String get resolution => '${width}x$height';
   String get bitrateText =>
-      bitrate > 0 ? '${bitrate} kbps' : AppLocalizations.t('mediaInfo.variableBitrate');
+      bitrate > 0 ? '$bitrate kbps' : AppLocalizations.t('mediaInfo.variableBitrate');
   String get fpsText => fps.toStringAsFixed(2);
 }
 

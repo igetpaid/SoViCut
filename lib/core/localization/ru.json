@@ -272,7 +272,11 @@
     "fromSec": "От (сек):",
     "toSec": "До (сек):",
     "outputFolder": "Выходная папка",
-    "clear": "Очистить"
+    "clear": "Очистить",
+    "deleteFirst": "Удалить с начала",
+    "deleteLast": "Удалить с конца",
+    "seconds": "сек",
+    "frames": "кадров"
   },
 
   "dialog": {

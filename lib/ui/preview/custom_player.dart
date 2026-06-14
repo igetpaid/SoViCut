@@ -132,7 +132,7 @@ class _CustomPlayerState extends State<CustomPlayer> {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.black.withValues(alpha: 0.5),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -154,9 +154,9 @@ class _CustomPlayerState extends State<CustomPlayer> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           decoration: BoxDecoration(
-            color: AppColors.bgCard.withOpacity(0.9),
+            color: AppColors.bgCard.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppColors.warning.withOpacity(0.5)),
+            border: Border.all(color: AppColors.warning.withValues(alpha: 0.5)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

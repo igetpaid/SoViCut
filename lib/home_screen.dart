@@ -24,6 +24,7 @@ import 'ui/timeline/timeline_bar.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/theme/app_colors.dart';
 import 'ui/batch/batch_screen.dart';
+import 'services/project_service.dart';
 import 'providers/audio_provider.dart';
 import 'providers/video_provider.dart';
 import 'providers/clips_provider.dart';
@@ -97,9 +98,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _mixTracks = audio.mixEnabled;
     if (video.path != null) _videoPath = video.path;
     _previewPosition = video.previewPosition;
-    if (clips.clips.isNotEmpty) {
-      _clips = clips.clips;
-    }
+    _clips = clips.clips.isNotEmpty ? clips.clips : [];
     _exportSettings = export.settings;
   }
 
@@ -202,6 +201,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     setState(() {
       _isExporting = true;
+      _exportCancelled = false;
       _exportProgress = 0;
       _exportStage = AppLocalizations.t('export.preparing');
     });
@@ -244,11 +244,130 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _cancelExport() {
+    _exportCancelled = true;
+  }
+
+  Future<void> _saveProject() async {
+    if (_videoPath == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.t('project.openVideoFirst'))),
+        );
+      }
+      return;
+    }
+
+    _syncToProviders();
+
+    final originalFileName = _videoPath!.split('\\').last.split('/').last;
+    final nameWithoutExt = originalFileName.lastIndexOf('.') != -1
+        ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+        : originalFileName;
+
+    final success = await ProjectService.saveProject(
+      name: nameWithoutExt,
+      data: ProjectData(
+        videoPath: _videoPath!,
+        clips: _clips,
+        audioTracks: _audioTracks,
+        audioEnabled: _audioEnabled,
+        mixEnabled: _mixTracks,
+        trimEnabled: _trimEnabled,
+        trimSeconds: _trimSeconds,
+        trimMode: _trimMode,
+        exportSettings: _exportSettings,
+        previewPosition: _previewPosition,
+      ),
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? AppLocalizations.t('project.saveSuccess')
+              : AppLocalizations.t('project.error')),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openProject() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['sovicat'],
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final data = await ProjectService.loadProject(result.files.first.path!);
+    if (data == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.t('project.error'))),
+        );
+      }
+      return;
+    }
+
+    // Check if video file exists
+    if (!File(data.videoPath).existsSync()) {
+      if (mounted) {
+        final locate = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(AppLocalizations.t('project.fileNotFound', {'path': data.videoPath})),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(AppLocalizations.t('common.cancel')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(AppLocalizations.t('project.locateFile')),
+              ),
+            ],
+          ),
+        );
+        if (locate == true) {
+          final pickResult = await FilePicker.platform.pickFiles(type: FileType.video);
+          if (pickResult == null || pickResult.files.isEmpty) return;
+          final newPath = pickResult.files.first.path!;
+          await _loadVideo(newPath);
+        } else {
+          return;
+        }
+      } else {
+        return;
+      }
+    } else {
+      await _loadVideo(data.videoPath);
+    }
+
+    // Apply project state
     setState(() {
-      _exportCancelled = true;
-      _isExporting = false;
-      _exportProgress = 0;
+      _audioTracks = data.audioTracks;
+      _audioEnabled = data.audioEnabled;
+      _mixTracks = data.mixEnabled;
+      _trimEnabled = data.trimEnabled;
+      _trimSeconds = data.trimSeconds;
+      _trimMode = data.trimMode;
+      _exportSettings = data.exportSettings;
+      _previewPosition = data.previewPosition;
+      _clips = data.clips;
     });
+
+    if (_videoController != null) {
+      _videoController!.seekTo(Duration(
+        milliseconds: (_previewPosition * _getTotalDuration() * 1000).toInt(),
+      ));
+    }
+
+    _syncToProviders();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.t('project.openSuccess'))),
+      );
+    }
   }
 
   Future<void> _export() async {
@@ -460,6 +579,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _clips.insert(i + 1, newClip);
           _nextClipId++;
         });
+        _syncToProviders();
         return;
       }
       accum += clip.duration;
@@ -473,6 +593,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() {
       _clips[clipIndex].isVisible = false;
     });
+    _syncToProviders();
   }
 
   void _restoreClip(int clipIndex) {
@@ -480,6 +601,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() {
       _clips[clipIndex].isVisible = true;
     });
+    _syncToProviders();
   }
 
   void _onCloseVideo() {
@@ -571,6 +693,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onExport: _export,
         isExporting: _isLoading,
         onCloseVideo: _videoPath != null ? _onCloseVideo : null,
+        onSaveProject: _videoPath != null ? _saveProject : null,
+        onOpenProject: _openProject,
       ),
       preview: DropTarget(
         onDragDone: (detail) {
@@ -654,7 +778,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             label: 'Split',
             tooltip: 'Split (S)',
             onTap: _splitCurrentClip,
-            color: AppColors.warning,
+            color: AppColors.textDim,
           ),
           const SizedBox(width: 4),
           _actionsButton(
@@ -734,7 +858,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 value: _exportProgress,
                 minHeight: 6,
                 backgroundColor: AppColors.border,
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.textSecondary),
               ),
             ),
           ),
@@ -780,15 +904,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     margin: const EdgeInsets.symmetric(horizontal: 2),
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.accent.withOpacity(0.2) : Colors.transparent,
+                      color: isSelected ? AppColors.textDim.withValues(alpha: 0.15) : Colors.transparent,
                       borderRadius: BorderRadius.circular(4),
-                      border: isSelected ? Border.all(color: AppColors.accent.withOpacity(0.5)) : null,
                     ),
                     child: Text(
                       label,
                       style: TextStyle(
                         fontSize: 10,
-                        color: isSelected ? AppColors.accent : AppColors.textDim,
+                        color: isSelected ? AppColors.textSecondary : AppColors.textDim,
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                       ),
                     ),

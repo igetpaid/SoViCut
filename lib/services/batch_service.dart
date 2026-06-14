@@ -27,6 +27,17 @@ class BatchService {
     final List<String> args = [];
 
     switch (operation) {
+      case 'delete_first':
+        args.addAll(['-ss', trimSeconds.toStringAsFixed(2), '-i', inputPath, '-c', 'copy']);
+        break;
+
+      case 'delete_last':
+        final durationStr = await getMediaDuration(inputPath);
+        final duration = double.tryParse(durationStr) ?? 0;
+        final newDuration = max(0, duration - trimSeconds);
+        args.addAll(['-i', inputPath, '-t', newDuration.toStringAsFixed(2), '-c', 'copy']);
+        break;
+
       case 'trim_first':
         args.addAll(['-ss', trimSeconds.toStringAsFixed(2), '-i', inputPath, '-c', 'copy']);
         break;

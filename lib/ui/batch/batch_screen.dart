@@ -205,6 +205,8 @@ class BatchScreen extends ConsumerWidget {
 
   Widget _opRadio(BatchOp op, BatchOp current, ValueChanged<BatchOp> onChanged) {
     final labels = {
+      BatchOp.deleteFirst: AppLocalizations.t('batch.deleteFirst'),
+      BatchOp.deleteLast: AppLocalizations.t('batch.deleteLast'),
       BatchOp.trimFirst: AppLocalizations.t('batch.keepFirst'),
       BatchOp.trimLast: AppLocalizations.t('batch.keepLast'),
       BatchOp.trimRange: AppLocalizations.t('batch.removeRange'),
@@ -234,10 +236,12 @@ class BatchScreen extends ConsumerWidget {
 
   List<Widget> _buildOpSettings(BuildContext context, BatchState state, BatchNotifier notifier) {
     switch (state.operation) {
+      case BatchOp.deleteFirst:
       case BatchOp.trimFirst:
         return [
           _labeledSlider(context, AppLocalizations.t('batch.secondsFromStart'), state.trimSeconds, 0, 3600, (v) => notifier.setTrimSeconds(v)),
         ];
+      case BatchOp.deleteLast:
       case BatchOp.trimLast:
         return [
           _labeledSlider(context, AppLocalizations.t('batch.secondsFromEnd'), state.trimSeconds, 0, 3600, (v) => notifier.setTrimSeconds(v)),
@@ -256,23 +260,57 @@ class BatchScreen extends ConsumerWidget {
   }
 
   Widget _labeledSlider(BuildContext context, String label, double value, double min, double max, ValueChanged<double> onChanged) {
+    final controller = TextEditingController(text: value.toStringAsFixed(3));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('$label ${value.toStringAsFixed(1)}',
+        Text(label,
             style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-          ),
-          child: Slider(
-            value: value.clamp(min, max),
-            min: min,
-            max: max,
-            activeColor: AppColors.accent,
-            onChanged: onChanged,
-          ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                ),
+                child: Slider(
+                  value: value.clamp(min, max),
+                  min: min,
+                  max: max,
+                  activeColor: AppColors.textSecondary,
+                  onChanged: (v) {
+                    onChanged(v);
+                    controller.text = v.toStringAsFixed(3);
+                  },
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 70,
+              child: TextField(
+                controller: controller,
+                style: TextStyle(fontSize: 11, color: AppColors.textPrimary),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.border)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.border)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.textSecondary)),
+                ),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                onSubmitted: (t) {
+                  final v = double.tryParse(t);
+                  if (v != null && v >= min && v <= max) {
+                    onChanged(v);
+                  } else {
+                    controller.text = value.toStringAsFixed(3);
+                  }
+                },
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -368,6 +406,8 @@ class BatchScreen extends ConsumerWidget {
     notifier.setOverallStatus(BatchStatus.running);
 
     final opLabels = {
+      BatchOp.deleteFirst: 'delete_first',
+      BatchOp.deleteLast: 'delete_last',
       BatchOp.trimFirst: 'trim_first',
       BatchOp.trimLast: 'trim_last',
       BatchOp.trimRange: 'trim_range',

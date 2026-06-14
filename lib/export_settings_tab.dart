@@ -234,14 +234,14 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
     if (_settings.videoQuality != VideoQuality.source && _mediaInfo!.videoStreams.isNotEmpty) {
       double estimatedVideoBitrate = 2000;
       final pixels = _mediaInfo!.videoStreams.first.width * _mediaInfo!.videoStreams.first.height;
-      if (pixels <= 640 * 480) estimatedVideoBitrate = 500;
-      else if (pixels <= 1280 * 720) estimatedVideoBitrate = 1500;
-      else if (pixels <= 1920 * 1080) estimatedVideoBitrate = 3000;
-      else if (pixels <= 3840 * 2160) estimatedVideoBitrate = 8000;
-      else estimatedVideoBitrate = 12000;
-      
-      if (_settings.crf < 18) estimatedVideoBitrate *= 2;
-      else if (_settings.crf > 28) estimatedVideoBitrate *= 0.5;
+      if (pixels <= 640 * 480) { estimatedVideoBitrate = 500; }
+      else if (pixels <= 1280 * 720) { estimatedVideoBitrate = 1500; }
+      else if (pixels <= 1920 * 1080) { estimatedVideoBitrate = 3000; }
+      else if (pixels <= 3840 * 2160) { estimatedVideoBitrate = 8000; }
+      else { estimatedVideoBitrate = 12000; }
+
+      if (_settings.crf < 18) { estimatedVideoBitrate *= 2; }
+      else if (_settings.crf > 28) { estimatedVideoBitrate *= 0.5; }
       
       final durationSec = _mediaInfo!.container.duration;
       final videoSizeNew = (estimatedVideoBitrate * 1000 * durationSec) / 8 / (1024 * 1024);
@@ -481,7 +481,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                     setState(() => _settings = _settings.copyWith(preserveOriginalTrackNames: val));
                     _notifyChanged();
                   },
-                  activeColor: Colors.orange,
+                  activeThumbColor: Colors.orange,
                   contentPadding: EdgeInsets.zero,
                 ),
                 
@@ -493,7 +493,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                     setState(() => _settings = _settings.copyWith(preserveAllAudioStreams: val));
                     _notifyChanged();
                   },
-                  activeColor: Colors.orange,
+                  activeThumbColor: Colors.orange,
                   contentPadding: EdgeInsets.zero,
                 ),
                 
@@ -538,7 +538,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                     setState(() => _settings = _settings.copyWith(mixToSingleTrack: val));
                     _notifyChanged();
                   },
-                  activeColor: Colors.orange,
+                  activeThumbColor: Colors.orange,
                   contentPadding: EdgeInsets.zero,
                 ),
                 
@@ -800,7 +800,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       decoration: BoxDecoration(
         color: Colors.grey[850],
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.withOpacity(0.5)),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

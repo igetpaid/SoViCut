@@ -140,7 +140,11 @@
     "fromSec": "From (sec):",
     "toSec": "To (sec):",
     "outputFolder": "Output folder",
-    "clear": "Clear"
+    "clear": "Clear",
+    "deleteFirst": "Delete from beginning",
+    "deleteLast": "Delete from end",
+    "seconds": "sec",
+    "frames": "frames"
   },
 
   "project": {
