@@ -787,107 +787,167 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         setState(() => _selectedClipIndex = index),
                     thumbnails: _thumbnailEntries,
                   ), // TimelineBar
-                  actions: _clips.isNotEmpty ? _buildActionBar() : null,
                 ), // MainLayout
               ), // Expanded
               if (_isExporting) _buildExportProgressBar(),
-              _buildStepSlider(),
+              _buildToolbar(),
             ],
           );
   }
 
-  Widget _buildActionBar() {
+  Widget _buildToolbar() {
     final selIdx = _selectedClipIndex;
     final clip = selIdx != null && selIdx < _clips.length
         ? _clips[selIdx]
         : null;
     return Container(
-      height: 48,
+      height: 42,
+      color: AppColors.timelineBg,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _actionChip(
-            icon: Icons.content_cut,
-            label: 'Split',
-            tooltip: 'Split (S)',
-            onTap: _splitCurrentClip,
-            color: AppColors.accent,
+          // --- Step selector ---
+          Text(
+            'Step:',
+            style: TextStyle(fontSize: 13, color: AppColors.textDim, fontWeight: FontWeight.w500),
           ),
+          const SizedBox(width: 6),
+          ...List.generate(_stepSizes.length, (i) {
+            final isSelected = _seekStepSize == _stepSizes[i];
+            String label;
+            if (_stepSizes[i] >= 1) {
+              label = '${_stepSizes[i].toInt()}s';
+            } else if (_stepSizes[i] == 0.1) {
+              label = '0.1s';
+            } else {
+              label = '1f';
+            }
+            return GestureDetector(
+              onTap: () => setState(() => _seekStepSize = _stepSizes[i]),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.accent.withValues(alpha: 0.2)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: isSelected
+                      ? Border.all(color: AppColors.accent.withValues(alpha: 0.5), width: 1)
+                      : null,
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected ? AppColors.accent : AppColors.textDim,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
+            );
+          }),
+          const SizedBox(width: 4),
+          _toolbarButton(Icons.skip_previous, () => _onSeekStep(false)),
           const SizedBox(width: 12),
-          _actionChip(
-            icon: Icons.visibility_off,
-            label: 'Delete',
-            tooltip: 'Delete (D)',
-            onTap: clip != null && clip.isVisible
-                ? () => _deleteClip(selIdx!)
-                : null,
-            color: AppColors.error,
-          ),
+
+          // --- Separator ---
+          Container(width: 1, height: 24, color: AppColors.border),
           const SizedBox(width: 12),
-          _actionChip(
-            icon: Icons.visibility,
-            label: 'Restore',
-            tooltip: 'Restore (A)',
-            onTap: clip != null && !clip.isVisible
-                ? () => _restoreClip(selIdx!)
-                : null,
-            color: const Color(0xFF4CAF50),
-          ),
+
+          // --- Action buttons (only when clips exist) ---
+          if (_clips.isNotEmpty) ...[
+            _toolAction(
+              icon: Icons.content_cut,
+              label: 'Split',
+              onTap: _splitCurrentClip,
+              color: AppColors.accent,
+            ),
+            const SizedBox(width: 6),
+            _toolAction(
+              icon: Icons.visibility_off,
+              label: 'Delete',
+              onTap: clip != null && clip.isVisible ? () => _deleteClip(selIdx!) : null,
+              color: AppColors.error,
+            ),
+            const SizedBox(width: 6),
+            _toolAction(
+              icon: Icons.visibility,
+              label: 'Restore',
+              onTap: clip != null && !clip.isVisible ? () => _restoreClip(selIdx!) : null,
+              color: const Color(0xFF4CAF50),
+            ),
+            const SizedBox(width: 12),
+            Container(width: 1, height: 24, color: AppColors.border),
+            const SizedBox(width: 12),
+          ],
+
+          // --- Step nav buttons ---
+          _toolbarButton(Icons.skip_previous, () => _onSeekStep(false)),
+          _toolbarButton(Icons.skip_next, () => _onSeekStep(true)),
         ],
       ),
     );
   }
 
-  Widget _actionChip({
+  Widget _toolAction({
     required IconData icon,
     required String label,
-    required String tooltip,
     required VoidCallback? onTap,
     required Color color,
   }) {
     final isActive = onTap != null;
-    return Tooltip(
-      message: tooltip,
-      child: AnimatedOpacity(
-        opacity: isActive ? 1.0 : 0.35,
-        duration: const Duration(milliseconds: 200),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? color.withValues(alpha: 0.15)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isActive
-                      ? color.withValues(alpha: 0.4)
-                      : Colors.white.withValues(alpha: 0.1),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 18, color: isActive ? color : Colors.white38),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isActive ? color : Colors.white38,
-                    ),
-                  ),
-                ],
-              ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: isActive ? color.withValues(alpha: 0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isActive ? color.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.1),
+              width: 1,
             ),
           ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: isActive ? color : Colors.white38),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isActive ? color : Colors.white38,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _toolbarButton(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: AppColors.textDim.withValues(alpha: 0.2), width: 1),
+          ),
+          child: Icon(icon, size: 14, color: AppColors.textDim),
         ),
       ),
     );
@@ -931,94 +991,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
           ),
           const SizedBox(width: 4),
-          _stepButton(Icons.close, _cancelExport),
+          _toolbarButton(Icons.close, _cancelExport),
         ],
-      ),
-    );
-  }
-
-  Widget _buildStepSlider() {
-    return Container(
-      height: 38,
-      color: AppColors.timelineBg,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: [
-          Text(
-            'Step:',
-            style: TextStyle(fontSize: 13, color: AppColors.textDim, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Row(
-              children: List.generate(_stepSizes.length, (i) {
-                final isSelected = _seekStepSize == _stepSizes[i];
-                String label;
-                if (_stepSizes[i] >= 1) {
-                  label = '${_stepSizes[i].toInt()}s';
-                } else if (_stepSizes[i] == 0.1) {
-                  label = '0.1s';
-                } else {
-                  label = '1f';
-                }
-                return GestureDetector(
-                  onTap: () => setState(() => _seekStepSize = _stepSizes[i]),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppColors.accent.withValues(alpha: 0.2)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
-                      border: isSelected
-                          ? Border.all(
-                              color: AppColors.accent.withValues(alpha: 0.5),
-                              width: 1,
-                            )
-                          : null,
-                    ),
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                        color: isSelected ? AppColors.accent : AppColors.textDim,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(width: 8),
-          _stepButton(Icons.skip_previous, () => _onSeekStep(false)),
-          _stepButton(Icons.skip_next, () => _onSeekStep(true)),
-        ],
-      ),
-    );
-  }
-
-  Widget _stepButton(IconData icon, VoidCallback onTap) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: onTap,
-        child: Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppColors.textDim.withValues(alpha: 0.2), width: 1),
-          ),
-          child: Icon(icon, size: 16, color: AppColors.textDim),
-        ),
       ),
     );
   }
