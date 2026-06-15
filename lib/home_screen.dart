@@ -809,7 +809,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           // --- Step selector ---
           Text(
             'Step:',
-            style: TextStyle(fontSize: 13, color: AppColors.textDim, fontWeight: FontWeight.w500),
+            style: TextStyle(fontSize: 13, color: AppColors.textDim, fontWeight: FontWeight.w500, decoration: TextDecoration.none),
           ),
           const SizedBox(width: 6),
           ...List.generate(_stepSizes.length, (i) {
@@ -848,8 +848,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ),
             );
           }),
-          const SizedBox(width: 4),
-          _toolbarButton(Icons.skip_previous, () => _onSeekStep(false)),
           const SizedBox(width: 12),
 
           // --- Separator ---
@@ -924,6 +922,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: isActive ? color : Colors.white38,
+                  decoration: TextDecoration.none,
                 ),
               ),
             ],
@@ -964,7 +963,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             width: 120,
             child: Text(
               _exportStage,
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary, decoration: TextDecoration.none),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -987,7 +986,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             width: 36,
             child: Text(
               '${(_exportProgress * 100).toInt()}%',
-              style: TextStyle(fontSize: 10, color: AppColors.textDim),
+              style: TextStyle(fontSize: 10, color: AppColors.textDim, decoration: TextDecoration.none),
             ),
           ),
           const SizedBox(width: 4),
