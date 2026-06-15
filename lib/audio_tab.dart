@@ -67,7 +67,7 @@ class _AudioTabState extends State<AudioTab> {
           ),
         ),
         const SizedBox(width: 8),
-        Text(AppLocalizations.t('audio.enable'), style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+        Text(AppLocalizations.t('audio.configure'), style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
       ],
     );
   }

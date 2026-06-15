@@ -187,7 +187,7 @@ class Toolbar extends StatelessWidget {
         child: ElevatedButton.icon(
           onPressed: null,
           icon: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.bgDark)),
-          label: Text('...'),
+          label: Text(AppLocalizations.t('export.encoding')),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.accent,
             foregroundColor: AppColors.bgDark,

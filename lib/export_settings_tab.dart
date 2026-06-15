@@ -411,7 +411,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                   _buildInfoRow(AppLocalizations.t('export.bitrate'), _mediaInfo!.container.bitrateText),
                   
                   const SizedBox(height: 12),
-                  const Text('🎬 Видео:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text(AppLocalizations.t('export.videoSection'), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   ..._mediaInfo!.videoStreams.map((v) => Padding(
                     padding: const EdgeInsets.only(left: 12, top: 4),
                     child: Text(
@@ -421,7 +421,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                   )),
                   
                   const SizedBox(height: 12),
-                  const Text('🎵 Аудио:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text(AppLocalizations.t('export.audioSection'), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   ..._mediaInfo!.audioStreams.asMap().entries.map((entry) => Padding(
                     padding: const EdgeInsets.only(left: 12, top: 4),
                     child: Column(
@@ -475,7 +475,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
               children: [
                 SwitchListTile(
                   title: Text(AppLocalizations.t('export.preserveTracks')),
-                  subtitle: const Text('Названия аудиодорожек останутся как в исходном файле'),
+                  subtitle: Text(AppLocalizations.t('export.preserveTracksDesc')),
                   value: _settings.preserveOriginalTrackNames,
                   onChanged: (val) {
                     setState(() => _settings = _settings.copyWith(preserveOriginalTrackNames: val));
@@ -487,7 +487,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 
                 SwitchListTile(
                   title: Text(AppLocalizations.t('export.preserveAll')),
-                  subtitle: const Text('Все оригинальные аудиодорожки будут сохранены'),
+                  subtitle: Text(AppLocalizations.t('export.preserveAllDesc')),
                   value: _settings.preserveAllAudioStreams,
                   onChanged: (val) {
                     setState(() => _settings = _settings.copyWith(preserveAllAudioStreams: val));
@@ -532,7 +532,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 
                 SwitchListTile(
                   title: Text(AppLocalizations.t('export.mixToSingle')),
-                  subtitle: const Text('Смешать выбранные дорожки в один поток'),
+                  subtitle: Text(AppLocalizations.t('export.mixToSingleDesc')),
                   value: _settings.mixToSingleTrack,
                   onChanged: (val) {
                     setState(() => _settings = _settings.copyWith(mixToSingleTrack: val));
@@ -567,9 +567,9 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                 _buildDropdown(
                   label: AppLocalizations.t('export.bitrateMode'),
                   value: _settings.bitrateMode,
-                  items: const [
-                    DropdownMenuItem(value: BitrateMode.cbr, child: Text('CBR (постоянный)')),
-                    DropdownMenuItem(value: BitrateMode.vbr, child: Text('VBR (переменный)')),
+                  items: [
+                    const DropdownMenuItem(value: BitrateMode.cbr, child: Text('CBR')),
+                    const DropdownMenuItem(value: BitrateMode.vbr, child: Text('VBR')),
                   ],
                   onChanged: (val) {
                     if (val != null) {
@@ -587,7 +587,7 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Битрейт: ${_settings.audioBitrate} kbps'),
+                          Text(AppLocalizations.t('export.bitrateValue', {'value': '${_settings.audioBitrate}'})),
                           Slider(
                             value: _settings.audioBitrate.toDouble(),
                             min: 32,

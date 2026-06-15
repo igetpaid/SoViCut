@@ -54,6 +54,7 @@
 
   "audio": {
     "enable": "Enable audio",
+    "configure": "Configure audio",
     "mixTracks": "Mix all tracks into one",
     "noTracks": "No audio tracks found",
     "normalize": "Normalize",
@@ -109,7 +110,15 @@
     "presets": "Presets",
     "preparing": "Preparing...",
     "encoding": "Exporting...",
-    "cancel": "Cancel export"
+    "cancel": "Cancel export",
+    "videoSection": "🎬 Video:",
+    "audioSection": "🎵 Audio:",
+    "preserveTracksDesc": "Original track names will be kept as in source file",
+    "preserveAllDesc": "All original audio tracks will be preserved",
+    "mixToSingleDesc": "Mix selected tracks into one stream",
+    "cbr": "CBR (constant)",
+    "vbr": "VBR (variable)",
+    "bitrateValue": "Bitrate: {value} kbps"
   },
 
   "batch": {

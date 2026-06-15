@@ -8,7 +8,7 @@ class AudioState {
 
   const AudioState({
     this.tracks = const [],
-    this.enabled = false,
+    this.enabled = true,
     this.mixEnabled = false,
   });
 

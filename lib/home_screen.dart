@@ -48,7 +48,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   double _trimSeconds = 10;
   int _trimMode = 0;
 
-  bool _audioEnabled = false;
+  bool _audioEnabled = true;
   bool _mixTracks = false;
 
   int _originalAudioBitrate = 192000;
@@ -471,6 +471,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       unawaited(_generateThumbnails(path, duration));
 
       setState(() {
+        _audioEnabled = true;
         _audioTracks = tracks;
         _clips = clips;
         _originalAudioBitrate = audioInfo.bitrate;

@@ -52,6 +52,7 @@
 
   "audio": {
     "enable": "Enable audio",
+    "configure": "Configure audio",
     "mixTracks": "Mix all tracks into one",
     "noTracks": "No audio tracks found",
     "normalize": "Normalize",
@@ -189,6 +190,7 @@
 
   "audio": {
     "enable": "Enable audio",
+    "configure": "Configure audio",
     "mixTracks": "Mix all tracks into one",
     "noTracks": "No audio tracks found",
     "normalize": "Normalize",
