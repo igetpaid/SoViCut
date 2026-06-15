@@ -6,6 +6,7 @@ class MainLayout extends StatelessWidget {
   final Widget preview;
   final Widget rightPanel;
   final Widget timeline;
+  final Widget? actions;
 
   const MainLayout({
     super.key,
@@ -13,6 +14,7 @@ class MainLayout extends StatelessWidget {
     required this.preview,
     required this.rightPanel,
     required this.timeline,
+    this.actions,
   });
 
   @override
@@ -25,6 +27,7 @@ class MainLayout extends StatelessWidget {
             toolbar,
             Expanded(
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
                     flex: 7,
@@ -36,7 +39,12 @@ class MainLayout extends StatelessWidget {
                         border: Border.all(color: AppColors.border, width: 1),
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: preview,
+                      child: Column(
+                        children: [
+                          Expanded(child: preview),
+                          ?actions,
+                        ],
+                      ),
                     ),
                   ),
                   SizedBox(

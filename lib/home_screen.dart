@@ -787,35 +787,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         setState(() => _selectedClipIndex = index),
                     thumbnails: _thumbnailEntries,
                   ), // TimelineBar
+                  actions: _clips.isNotEmpty ? _buildActionBar() : null,
                 ), // MainLayout
               ), // Expanded
-              if (_clips.isNotEmpty) _buildTimelineActions(),
               if (_isExporting) _buildExportProgressBar(),
               _buildStepSlider(),
             ],
           );
   }
 
-  Widget _buildTimelineActions() {
+  Widget _buildActionBar() {
     final selIdx = _selectedClipIndex;
     final clip = selIdx != null && selIdx < _clips.length
         ? _clips[selIdx]
         : null;
     return Container(
-      height: 32,
-      color: AppColors.timelineBg,
+      height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _actionsButton(
+          _actionChip(
             icon: Icons.content_cut,
             label: 'Split',
             tooltip: 'Split (S)',
             onTap: _splitCurrentClip,
             color: AppColors.accent,
           ),
-          const SizedBox(width: 4),
-          _actionsButton(
+          const SizedBox(width: 12),
+          _actionChip(
             icon: Icons.visibility_off,
             label: 'Delete',
             tooltip: 'Delete (D)',
@@ -824,8 +824,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 : null,
             color: AppColors.error,
           ),
-          const SizedBox(width: 4),
-          _actionsButton(
+          const SizedBox(width: 12),
+          _actionChip(
             icon: Icons.visibility,
             label: 'Restore',
             tooltip: 'Restore (A)',
@@ -839,42 +839,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _actionsButton({
+  Widget _actionChip({
     required IconData icon,
     required String label,
     required String tooltip,
     required VoidCallback? onTap,
     required Color color,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(4),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          height: 26,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: onTap != null ? 0.15 : 0.05),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 12,
-                color: onTap != null ? color : color.withValues(alpha: 0.3),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: onTap != null ? color : color.withValues(alpha: 0.3),
+    final isActive = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: AnimatedOpacity(
+        opacity: isActive ? 1.0 : 0.35,
+        duration: const Duration(milliseconds: 200),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? color.withValues(alpha: 0.15)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isActive
+                      ? color.withValues(alpha: 0.4)
+                      : Colors.white.withValues(alpha: 0.1),
+                  width: 1,
                 ),
               ),
-            ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 18, color: isActive ? color : Colors.white38),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isActive ? color : Colors.white38,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -927,16 +939,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   Widget _buildStepSlider() {
     return Container(
-      height: 28,
+      height: 38,
       color: AppColors.timelineBg,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
           Text(
             'Step:',
-            style: TextStyle(fontSize: 10, color: AppColors.textDim),
+            style: TextStyle(fontSize: 13, color: AppColors.textDim, fontWeight: FontWeight.w500),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 10),
           Expanded(
             child: Row(
               children: List.generate(_stepSizes.length, (i) {
@@ -952,27 +964,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 return GestureDetector(
                   onTap: () => setState(() => _seekStepSize = _stepSizes[i]),
                   child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
+                      horizontal: 10,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppColors.textDim.withValues(alpha: 0.15)
+                          ? AppColors.accent.withValues(alpha: 0.2)
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(6),
+                      border: isSelected
+                          ? Border.all(
+                              color: AppColors.accent.withValues(alpha: 0.5),
+                              width: 1,
+                            )
+                          : null,
                     ),
                     child: Text(
                       label,
                       style: TextStyle(
-                        fontSize: 10,
-                        color: isSelected
-                            ? AppColors.textSecondary
-                            : AppColors.textDim,
-                        fontWeight: isSelected
-                            ? FontWeight.w600
-                            : FontWeight.normal,
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        color: isSelected ? AppColors.accent : AppColors.textDim,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                   ),
@@ -992,13 +1007,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
         onTap: onTap,
         child: Container(
-          width: 24,
-          height: 24,
+          width: 32,
+          height: 32,
           alignment: Alignment.center,
-          child: Icon(icon, size: 14, color: AppColors.textDim),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: AppColors.textDim.withValues(alpha: 0.2), width: 1),
+          ),
+          child: Icon(icon, size: 16, color: AppColors.textDim),
         ),
       ),
     );
