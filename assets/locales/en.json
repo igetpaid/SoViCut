@@ -71,7 +71,9 @@
     "track": "Track {number}",
     "exported": "Exported: {result}",
     "exportError": "Error exporting track \"{name}\"",
-    "normalizationInfo": "Normalization: {original} dB → {target} dB (applied on export)"
+    "normalizationInfo": "Normalization: {original} dB → {target} dB (applied on export)",
+    "mute": "Export without audio",
+    "muteDesc": "Faster export — no audio in output"
   },
 
   "export": {
@@ -195,7 +197,8 @@
     "themeDark": "Dark",
     "themeDarkDesc": "Classic dark theme",
     "themeTwilight": "Twilight",
-    "themeTwilightDesc": "Blue-purple theme for comfortable work"
+    "themeTwilightDesc": "Blue-purple theme for comfortable work",
+    "language": "Language"
   },
 
   "common": {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/locale_provider.dart';
 
 class SettingsPanel extends ConsumerWidget {
   const SettingsPanel({super.key});
@@ -10,6 +11,7 @@ class SettingsPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentTheme = ref.watch(themeModeProvider);
+    final currentLocale = ref.watch(localeProvider);
 
     return Dialog(
       backgroundColor: AppColors.bgSurface,
@@ -95,7 +97,110 @@ class SettingsPanel extends ConsumerWidget {
                 Navigator.pop(context);
               },
             ),
+            const SizedBox(height: 20),
+            Text(
+              AppLocalizations.t('settings.language'),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _LangOption(
+              code: 'ru',
+              label: 'Русский',
+              selected: currentLocale.languageCode == 'ru',
+              onTap: () {
+                ref.read(localeProvider.notifier).setLocale(const Locale('ru'));
+                Navigator.pop(context);
+              },
+            ),
+            const SizedBox(height: 8),
+            _LangOption(
+              code: 'en',
+              label: 'English',
+              selected: currentLocale.languageCode == 'en',
+              onTap: () {
+                ref.read(localeProvider.notifier).setLocale(const Locale('en'));
+                Navigator.pop(context);
+              },
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LangOption extends StatelessWidget {
+  final String code;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _LangOption({
+    required this.code,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.accent.withValues(alpha: 0.12)
+                : AppColors.bgCard.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected ? AppColors.accent : AppColors.border,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    code.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (selected)
+                Icon(Icons.check_circle, size: 18, color: AppColors.accent),
+            ],
+          ),
         ),
       ),
     );

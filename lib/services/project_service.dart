@@ -9,7 +9,7 @@ class ProjectData {
   final String videoPath;
   final List<Clip> clips;
   final List<AudioTrack> audioTracks;
-  final bool audioEnabled;
+  final bool muted;
   final bool mixEnabled;
   final bool trimEnabled;
   final double trimSeconds;
@@ -21,7 +21,7 @@ class ProjectData {
     required this.videoPath,
     required this.clips,
     required this.audioTracks,
-    required this.audioEnabled,
+    required this.muted,
     required this.mixEnabled,
     required this.trimEnabled,
     required this.trimSeconds,
@@ -60,7 +60,7 @@ class ProjectService {
         'videoPath': data.videoPath,
         'previewPosition': data.previewPosition,
         'audio': {
-          'enabled': data.audioEnabled,
+          'enabled': !data.muted,
           'mixEnabled': data.mixEnabled,
           'tracks': data.audioTracks.map((t) => t.toJson()).toList(),
         },
@@ -117,7 +117,7 @@ class ProjectService {
         videoPath: videoPath,
         clips: clips,
         audioTracks: audioTracks,
-        audioEnabled: audioData['enabled'] as bool? ?? false,
+        muted: !(audioData['enabled'] as bool? ?? true),
         mixEnabled: audioData['mixEnabled'] as bool? ?? false,
         trimEnabled: trimData['enabled'] as bool? ?? false,
         trimSeconds: (trimData['seconds'] as num?)?.toDouble() ?? 0,

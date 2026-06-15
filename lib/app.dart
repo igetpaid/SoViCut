@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/theme_provider.dart';
+import 'providers/locale_provider.dart';
 import 'home_screen.dart';
 
 class SoViCutApp extends ConsumerWidget {
@@ -19,6 +20,7 @@ class SoViCutApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider);
+    final locale = ref.watch(localeProvider);
 
     return MaterialApp(
       title: 'SoViCut',
@@ -28,7 +30,7 @@ class SoViCutApp extends ConsumerWidget {
       darkTheme: mode == AppThemeMode.twilight ? AppTheme.twilight : AppTheme.dark,
       localizationsDelegates: _delegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      locale: const Locale('ru'),
+      locale: locale,
       home: const HomeScreen(),
     );
   }

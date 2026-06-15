@@ -3,23 +3,23 @@ import '../models/audio_track.dart';
 
 class AudioState {
   final List<AudioTrack> tracks;
-  final bool enabled;
+  final bool muted;
   final bool mixEnabled;
 
   const AudioState({
     this.tracks = const [],
-    this.enabled = true,
+    this.muted = false,
     this.mixEnabled = false,
   });
 
   AudioState copyWith({
     List<AudioTrack>? tracks,
-    bool? enabled,
+    bool? muted,
     bool? mixEnabled,
   }) {
     return AudioState(
       tracks: tracks ?? this.tracks,
-      enabled: enabled ?? this.enabled,
+      muted: muted ?? this.muted,
       mixEnabled: mixEnabled ?? this.mixEnabled,
     );
   }
@@ -50,8 +50,8 @@ class AudioNotifier extends StateNotifier<AudioState> {
     state = state.copyWith(tracks: tracks);
   }
 
-  void setEnabled(bool value) {
-    state = state.copyWith(enabled: value);
+  void setMuted(bool value) {
+    state = state.copyWith(muted: value);
   }
 
   void setMixEnabled(bool value) {

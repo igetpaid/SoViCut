@@ -48,7 +48,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   double _trimSeconds = 10;
   int _trimMode = 0;
 
-  bool _audioEnabled = true;
+  bool _muteAudio = false;
   bool _mixTracks = false;
 
   int _originalAudioBitrate = 192000;
@@ -128,7 +128,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final export = ref.read(exportProvider);
 
     _audioTracks = audio.tracks;
-    _audioEnabled = audio.enabled;
+    _muteAudio = audio.muted;
     _mixTracks = audio.mixEnabled;
     if (video.path != null) _videoPath = video.path;
     _previewPosition = video.previewPosition;
@@ -138,7 +138,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   void _syncToProviders() {
     ref.read(audioProvider.notifier).setTracks(_audioTracks);
-    ref.read(audioProvider.notifier).setEnabled(_audioEnabled);
+    ref.read(audioProvider.notifier).setMuted(_muteAudio);
     ref.read(audioProvider.notifier).setMixEnabled(_mixTracks);
     ref.read(videoProvider.notifier).loadVideo(_videoPath ?? '');
     ref.read(videoProvider.notifier).setPreviewPosition(_previewPosition);
@@ -230,7 +230,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final success = await strategy.export(
       inputPath: _videoPath!,
       outputPath: outPath,
-      audioTracks: _audioEnabled ? _audioTracks : [],
+      audioTracks: _muteAudio ? [] : _audioTracks,
       mixAudio: _mixTracks,
       trimSeconds: _trimEnabled ? _trimSeconds : null,
       trimMode: _trimMode,
@@ -312,7 +312,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         videoPath: _videoPath!,
         clips: _clips,
         audioTracks: _audioTracks,
-        audioEnabled: _audioEnabled,
+        muted: _muteAudio,
         mixEnabled: _mixTracks,
         trimEnabled: _trimEnabled,
         trimSeconds: _trimSeconds,
@@ -395,7 +395,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // Apply project state
     setState(() {
       _audioTracks = data.audioTracks;
-      _audioEnabled = data.audioEnabled;
+      _muteAudio = data.muted;
       _mixTracks = data.mixEnabled;
       _trimEnabled = data.trimEnabled;
       _trimSeconds = data.trimSeconds;
@@ -471,7 +471,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       unawaited(_generateThumbnails(path, duration));
 
       setState(() {
-        _audioEnabled = true;
+        _muteAudio = false;
         _audioTracks = tracks;
         _clips = clips;
         _originalAudioBitrate = audioInfo.bitrate;
@@ -667,7 +667,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       _selectedClipIndex = null;
       _thumbnailEntries = [];
       _trimEnabled = false;
-      _audioEnabled = false;
+      _muteAudio = false;
       _mixTracks = false;
     });
     _syncToProviders();
@@ -733,7 +733,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     },
                     child: CustomPlayer(
                       controller: _videoController,
-                      hasAudioChanges: _audioEnabled,
+                      hasAudioChanges: !_muteAudio,
                       onTapEmpty: _pickVideo,
                     ),
                   ),
@@ -750,9 +750,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     },
                     trimSeconds: _trimSeconds,
                     trimMode: _trimMode,
-                    audioEnabled: _audioEnabled,
-                    onAudioEnabledChanged: (val) =>
-                        setState(() => _audioEnabled = val),
+                    audioMuted: _muteAudio,
+                    onAudioMutedChanged: (val) =>
+                        setState(() => _muteAudio = val),
                     audioTracks: _audioTracks,
                     onAudioTracksChanged: (tracks) =>
                         setState(() => _audioTracks = tracks),

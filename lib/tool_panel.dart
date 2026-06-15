@@ -16,8 +16,8 @@ class ToolPanel extends StatelessWidget {
   final double trimSeconds;
   final int trimMode;
   
-  final bool audioEnabled;
-  final Function(bool) onAudioEnabledChanged;
+  final bool audioMuted;
+  final Function(bool) onAudioMutedChanged;
   final List<AudioTrack> audioTracks;
   final Function(List<AudioTrack>) onAudioTracksChanged;
   final bool mixEnabled;
@@ -43,8 +43,8 @@ class ToolPanel extends StatelessWidget {
     required this.onTrimChanged,
     required this.trimSeconds,
     required this.trimMode,
-    required this.audioEnabled,
-    required this.onAudioEnabledChanged,
+    required this.audioMuted,
+    required this.onAudioMutedChanged,
     required this.audioTracks,
     required this.onAudioTracksChanged,
     required this.mixEnabled,
@@ -102,8 +102,8 @@ class ToolPanel extends StatelessWidget {
                   initialMode: trimMode,
                 ),
                 AudioTab(
-                  isEnabled: audioEnabled,
-                  onEnabledChanged: onAudioEnabledChanged,
+                  muted: audioMuted,
+                  onMutedChanged: onAudioMutedChanged,
                   tracks: audioTracks,
                   onTracksChanged: onAudioTracksChanged,
                   mixEnabled: mixEnabled,

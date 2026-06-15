@@ -6,8 +6,8 @@ import 'core/theme/app_colors.dart';
 import 'core/localization/app_localizations.dart';
 
 class AudioTab extends StatefulWidget {
-  final bool isEnabled;
-  final Function(bool) onEnabledChanged;
+  final bool muted;
+  final Function(bool) onMutedChanged;
   final List<AudioTrack> tracks;
   final Function(List<AudioTrack>) onTracksChanged;
   final bool mixEnabled;
@@ -16,8 +16,8 @@ class AudioTab extends StatefulWidget {
 
   const AudioTab({
     super.key,
-    required this.isEnabled,
-    required this.onEnabledChanged,
+    required this.muted,
+    required this.onMutedChanged,
     required this.tracks,
     required this.onTracksChanged,
     required this.mixEnabled,
@@ -39,56 +39,58 @@ class _AudioTabState extends State<AudioTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildEnableRow(),
-          if (widget.isEnabled) ...[
-            const SizedBox(height: 8),
-            _buildMixRow(),
-            const SizedBox(height: 12),
-            if (widget.tracks.isEmpty)
-              _buildEmptyState()
-            else
-              ...widget.tracks.asMap().entries.map((entry) =>
-                _buildTrackCard(entry.key, entry.value)),
-          ],
+          if (widget.tracks.isEmpty)
+            _buildEmptyState()
+          else
+            ...widget.tracks.asMap().entries.map((entry) =>
+              _buildTrackCard(entry.key, entry.value)),
+          const SizedBox(height: 12),
+          _buildGeneralSettings(),
         ],
       ),
     );
   }
 
-  Widget _buildEnableRow() {
-    return Row(
-      children: [
-        SizedBox(
-          height: 24,
-          child: Checkbox(
-            value: widget.isEnabled,
-            onChanged: (val) => widget.onEnabledChanged(val ?? false),
-            activeColor: AppColors.accent,
+  Widget _buildGeneralSettings() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            title: Text(
+              AppLocalizations.t('audio.mute'),
+              style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
+            ),
+            subtitle: Text(
+              AppLocalizations.t('audio.muteDesc'),
+              style: TextStyle(fontSize: 10, color: AppColors.textDim),
+            ),
+            value: widget.muted,
+            onChanged: (val) => widget.onMutedChanged(val),
+            activeThumbColor: AppColors.accent,
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
           ),
-        ),
-        const SizedBox(width: 8),
-        Text(AppLocalizations.t('audio.configure'), style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
-      ],
-    );
-  }
-
-  Widget _buildMixRow() {
-    return Row(
-      children: [
-        SizedBox(
-          height: 24,
-          child: Checkbox(
-            value: widget.mixEnabled,
-            onChanged: (val) => widget.onMixEnabledChanged(val ?? false),
-            activeColor: AppColors.accent,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(AppLocalizations.t('audio.mixTracks'),
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        ),
-      ],
+          if (!widget.muted) ...[
+            Divider(height: 0, color: AppColors.border),
+            SwitchListTile(
+              title: Text(
+                AppLocalizations.t('audio.mixTracks'),
+                style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
+              ),
+              value: widget.mixEnabled,
+              onChanged: (val) => widget.onMixEnabledChanged(val),
+              activeThumbColor: AppColors.accent,
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -114,7 +116,7 @@ class _AudioTabState extends State<AudioTab> {
       child: Column(
         children: [
           _buildTrackHeader(index, track, isEditing),
-          if (track.isEnabled) ...[
+          if (track.isEnabled && !widget.muted) ...[
             _buildTrackDetails(track),
             _buildVolumeControl(track, index),
             _buildTrackActions(index, track),
@@ -125,6 +127,7 @@ class _AudioTabState extends State<AudioTab> {
   }
 
   Widget _buildTrackHeader(int index, AudioTrack track, bool isEditing) {
+    final isDisabled = widget.muted;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
       child: Row(
@@ -132,8 +135,8 @@ class _AudioTabState extends State<AudioTab> {
           SizedBox(
             height: 20,
             child: Checkbox(
-              value: track.isEnabled,
-              onChanged: (_) => _toggleTrack(index),
+              value: isDisabled ? false : track.isEnabled,
+              onChanged: isDisabled ? null : (_) => _toggleTrack(index),
               activeColor: AppColors.accent,
             ),
           ),

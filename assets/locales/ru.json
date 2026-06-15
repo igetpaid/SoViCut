@@ -71,7 +71,9 @@
     "track": "Дорожка {number}",
     "exported": "Экспортировано: {result}",
     "exportError": "Ошибка экспорта дорожки \"{name}\"",
-    "normalizationInfo": "Нормализация: {original} dB → {target} dB (применяется при экспорте)"
+    "normalizationInfo": "Нормализация: {original} dB → {target} dB (применяется при экспорте)",
+    "mute": "Без звука",
+    "muteDesc": "Быстрый экспорт — аудио не сохраняется"
   },
 
   "export": {
@@ -195,7 +197,8 @@
     "themeDark": "Тёмная",
     "themeDarkDesc": "Классическая тёмная тема",
     "themeTwilight": "Сумерки",
-    "themeTwilightDesc": "Сине-фиолетовая тема для комфортной работы"
+    "themeTwilightDesc": "Сине-фиолетовая тема для комфортной работы",
+    "language": "Язык"
   },
 
   "common": {
