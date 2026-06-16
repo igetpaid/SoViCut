@@ -3,40 +3,27 @@
 ## Stack
 - **Framework:** Flutter (Dart)
 - **State:** Riverpod + Provider
-- **UI:** Material, custom theme, no AndroidX embedding issues
+- **UI:** Material, custom theme
 - **Localization:** Custom `AppLocalizations.t('key')` via JSON assets (`assets/locales/*.json`)
-- **Build:** Windows ✅, Android ❌ (file_picker v1 embedding issue)
+- **Build:** Windows ✅ (`flutter build windows --debug`), Android ❌ (file_picker v1 embedding)
 - **Analysis:** `flutter analyze` — 0 errors, 0 warnings, 8 info (pre-existing `avoid_print`)
-
-## Architecture
-- **Entry:** `main.dart` → `App` widget → `HomeScreen`
-- **HomeScreen** is a stateful widget managing: audio, clips, export, FFmpeg pipeline
-- **Audio:** `AudioState` / `AudioNotifier` (Riverpod) — tracks, muted, mixEnabled
-- **Export:** FFmpeg strategy via `ExportSettingsTab` + `tool_panel.dart`
-- **LocaleProvider:** Riverpod StateNotifier for language switching
 
 ## Recent Changes (2026-06-15)
 
-### Audio UX overhaul
-- **Removed** master "Configure audio" checkbox — audio panel always visible
-- **Added** 2 general toggles below the audio track list:
-  - "Export without audio" (`_muteAudio`) — muted tracks in export
-  - "Mix tracks" (`mixEnabled`) — merge all tracks into one
-- **Now audio is always enabled by default** (was opt-in, now opt-out)
-- Fixed: removed duplicate `skip_previous` button in toolbar
-- Fixed: added `TextDecoration.none` to toolbar text buttons (underlines)
+### Bugfixes — P3
+- **export.success text** — `"Exporting... 100%"` → `"Export complete"` / `"Экспорт завершён"` (`assets/locales/{en,ru}.json`)
+- **Clip edge drag removed** — dead code that modified clip state without `setState()` (`timeline_bar.dart`, `_ScrubBarPainter`)
+- **TextEditingController leaks fixed** — `export_settings_tab.dart` now stores controllers in state (init + dispose), `batch_screen.dart` extracted to `_PrecisionSlider` StatefulWidget
 
-### Settings / Localization
-- **LocaleProvider** — manages `Locale` state, persists to shared_preferences
-- **Language selector** in Settings panel (`ui/settings/settings_panel.dart`) — dropdown with en/ru
-- Updated `assets/locales/en.json` and `ru.json` with new `audio.exportWithoutAudio` and `settings.language` keys
+### Architecture — P0, P1, P4
+- **Dual state fix** — `home_screen.dart` now listens to `audioProvider` + `clipsProvider` changes via `ref.listen` in `didChangeDependencies`. Provider mutations (from AudioTab, ClipsTab) propagate to local state immediately
+- **Theme factory** — `app_theme.dart` collapsed from 324→112 lines. `_build(AppColorSet, Brightness, Color)` replaces 3 near-duplicate blocks
 
-### Lint fixes
-- Removed unused imports (`cupertino.dart`, etc.)
-- Renamed deprecated `_withOpacity` → `withValues(alpha:)`
-- Replaced deprecated `activeColor` → `activeThumbColor` on `SwitchListTile` widgets
-
-## Remaining issues
-- Android build broken: `file_picker` plugin uses v1 embedding (pre-existing, not caused by us)
-- `lib/core/localization/en.json` / `ru.json` are stale duplicates of `assets/locales/*.json`
-- 8 `avoid_print` info-level items in ffmpeg/service code
+### Cleanup — P2
+- **Deleted orphan files:**
+  - `lib/core/localization/translations.dart` (barrel, unused)
+  - `lib/core/theme/theme.dart` (barrel, unused)
+  - `lib/core/localization/en.json`, `ru.json` (stale duplicates of `assets/locales/*`)
+  - `lib/quick_commit.bat`, `lib/restart project.bat`
+  - `allcode.txt` (added to `.gitignore`)
+- `_labeledSlider` orphan body removed from `batch_screen.dart`

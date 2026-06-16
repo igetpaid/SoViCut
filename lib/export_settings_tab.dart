@@ -166,7 +166,10 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
   bool _isLoading = true;
   String _error = '';
   double _estimatedOutputSizeMb = 0;
-  
+  late TextEditingController _audioBitrateController;
+  late TextEditingController _crfController;
+  bool _settingControllerInternally = false;
+
   @override
   void initState() {
     super.initState();
@@ -175,7 +178,47 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
       originalSampleRate: 48000,
       originalChannels: 2,
     );
+    _audioBitrateController = TextEditingController(text: _settings.audioBitrate.toString());
+    _crfController = TextEditingController(text: _settings.crf.toString());
+    _audioBitrateController.addListener(_onAudioBitrateChanged);
+    _crfController.addListener(_onCrfChanged);
     _loadMediaInfo();
+  }
+
+  @override
+  void dispose() {
+    _audioBitrateController.dispose();
+    _crfController.dispose();
+    super.dispose();
+  }
+
+  void _syncControllers() {
+    _settingControllerInternally = true;
+    _audioBitrateController.text = _settings.audioBitrate.toString();
+    _crfController.text = _settings.crf.toString();
+    _settingControllerInternally = false;
+  }
+
+  void _onAudioBitrateChanged() {
+    if (_settingControllerInternally) return;
+    final val = int.tryParse(_audioBitrateController.text);
+    if (val != null && val >= 32 && val <= 512) {
+      setState(() {
+        _settings = _settings.copyWith(audioBitrate: val);
+        _notifyChanged();
+      });
+    }
+  }
+
+  void _onCrfChanged() {
+    if (_settingControllerInternally) return;
+    final val = int.tryParse(_crfController.text);
+    if (val != null && val >= 0 && val <= 51) {
+      setState(() {
+        _settings = _settings.copyWith(crf: val);
+        _notifyChanged();
+      });
+    }
   }
   
   Future<void> _loadMediaInfo() async {
@@ -209,7 +252,9 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
           audioBitrate: firstAudio.bitrate > 0 ? firstAudio.bitrate : 192,
         );
       }
-      
+
+      _syncControllers();
+
       _calculateEstimatedSize();
       _notifyChanged();
     } catch (e) {
@@ -606,20 +651,13 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                     SizedBox(
                       width: 80,
                       child: TextField(
-                        controller: TextEditingController(text: _settings.audioBitrate.toString()),
+                        controller: _audioBitrateController,
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
                           labelText: 'kbps',
                           border: OutlineInputBorder(),
                         ),
-                        onChanged: (val) {
-                          final int? newVal = int.tryParse(val);
-                          if (newVal != null && newVal >= 32 && newVal <= 512) {
-                            setState(() => _settings = _settings.copyWith(audioBitrate: newVal));
-                            _notifyChanged();
-                          }
-                        },
                       ),
                     ),
                   ],
@@ -771,17 +809,10 @@ class _ExportSettingsTabState extends State<ExportSettingsTab> {
                       SizedBox(
                         width: 60,
                         child: TextField(
-                          controller: TextEditingController(text: _settings.crf.toString()),
+                          controller: _crfController,
                           keyboardType: TextInputType.number,
                           style: const TextStyle(color: Colors.white),
                           decoration: const InputDecoration(border: OutlineInputBorder()),
-                          onChanged: (val) {
-                            final int? newVal = int.tryParse(val);
-                            if (newVal != null && newVal >= 0 && newVal <= 51) {
-                              setState(() => _settings = _settings.copyWith(crf: newVal));
-                              _notifyChanged();
-                            }
-                          },
                         ),
                       ),
                     ],

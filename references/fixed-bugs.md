@@ -65,3 +65,12 @@
 **Проверка:** grep не находит `_audioEnabled` (заменено на `_muteAudio`)
 **Дата исправления:** 2026-06-15
 **Контекст:** `_audioEnabled` удалено. Вместо него `_muteAudio`. По умолчанию `false` — аудио всегда включено. Галка «Настроить аудио» заменена на «Без звука» в общих настройках.
+
+---
+
+### `ref.listen()` в `didChangeDependencies` (runtime crash)
+**Grep-шаблон:** `didChangeDependencies.*ref\.listen`
+**Файлы для проверки:** `lib/home_screen.dart`
+**Проверка:** `grep -r "didChangeDependencies.*ref\.listen" lib/` — 0 совпадений
+**Дата исправления:** 2026-06-15
+**Контекст:** `ref.listen()` был помещён в `didChangeDependencies` вместо `build()`. Riverpod требует `ref.listen()` только внутри метода `build()` у `ConsumerStatefulWidget`/`ConsumerWidget`. Иначе — красный экран: "ref.listen can only be used within the build method". Перенесено в начало `build()`.

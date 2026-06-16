@@ -195,22 +195,17 @@ class _TimelineBarState extends State<TimelineBar> {
             child: Container(
               height: 32,
               alignment: Alignment.center,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: CustomPaint(
-                  size: Size(constraints.maxWidth, 8),
-                  painter: _ScrubBarPainter(
-                    cursorPosition: widget.cursorPosition,
-                    clips: widget.clips,
-                    totalDuration: widget.totalDuration,
-                    onDragStart: widget.selectedClipIndex != null
-                        ? (edge) => _onDragHandleStart(edge, constraints.maxWidth)
-                        : null,
-                    onDragUpdate: (dx) => _onDragHandleUpdate(dx, constraints.maxWidth),
-                    onDragEnd: () => _onDragHandleEnd(),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: CustomPaint(
+                    size: Size(constraints.maxWidth, 8),
+                    painter: _ScrubBarPainter(
+                      cursorPosition: widget.cursorPosition,
+                      clips: widget.clips,
+                      totalDuration: widget.totalDuration,
+                    ),
                   ),
                 ),
-              ),
             ),
           );
         },
@@ -232,31 +227,6 @@ class _TimelineBarState extends State<TimelineBar> {
     }
   }
 
-  bool _isDraggingEdge = false;
-  int _dragEdgeIndex = -1;
-  bool _isDragStartEdge = false; // true = start edge, false = end edge
-
-  void _onDragHandleStart(bool isStartEdge, double totalWidth) {
-    _isDraggingEdge = true;
-    _dragEdgeIndex = widget.selectedClipIndex ?? -1;
-    _isDragStartEdge = isStartEdge;
-  }
-
-  void _onDragHandleUpdate(double dx, double totalWidth) {
-    if (!_isDraggingEdge || _dragEdgeIndex < 0 || _dragEdgeIndex >= widget.clips.length) return;
-    final deltaSec = (dx / totalWidth) * widget.totalDuration;
-    final clip = widget.clips[_dragEdgeIndex];
-    if (_isDragStartEdge) {
-      clip.startTime = (clip.startTime + deltaSec).clamp(0.0, clip.endTime - 0.1);
-    } else {
-      clip.endTime = (clip.endTime + deltaSec).clamp(clip.startTime + 0.1, 1e10);
-    }
-  }
-
-  void _onDragHandleEnd() {
-    _isDraggingEdge = false;
-  }
-
   String _formatTime(double seconds) {
     if (seconds.isNaN || seconds.isInfinite) return '0:00';
     final dur = Duration(milliseconds: (seconds * 1000).toInt());
@@ -270,17 +240,11 @@ class _ScrubBarPainter extends CustomPainter {
   final double cursorPosition;
   final List<Clip> clips;
   final double totalDuration;
-  final void Function(bool isStartEdge)? onDragStart;
-  final void Function(double dx)? onDragUpdate;
-  final VoidCallback? onDragEnd;
 
   _ScrubBarPainter({
     required this.cursorPosition,
     required this.clips,
     required this.totalDuration,
-    this.onDragStart,
-    this.onDragUpdate,
-    this.onDragEnd,
   });
 
   @override

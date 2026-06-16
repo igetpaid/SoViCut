@@ -239,81 +239,24 @@ class BatchScreen extends ConsumerWidget {
       case BatchOp.deleteFirst:
       case BatchOp.trimFirst:
         return [
-          _labeledSlider(context, AppLocalizations.t('batch.secondsFromStart'), state.trimSeconds, 0, 3600, (v) => notifier.setTrimSeconds(v)),
+          _PrecisionSlider(label: AppLocalizations.t('batch.secondsFromStart'), value: state.trimSeconds, min: 0, max: 3600, onChanged: (v) => notifier.setTrimSeconds(v)),
         ];
       case BatchOp.deleteLast:
       case BatchOp.trimLast:
         return [
-          _labeledSlider(context, AppLocalizations.t('batch.secondsFromEnd'), state.trimSeconds, 0, 3600, (v) => notifier.setTrimSeconds(v)),
+          _PrecisionSlider(label: AppLocalizations.t('batch.secondsFromEnd'), value: state.trimSeconds, min: 0, max: 3600, onChanged: (v) => notifier.setTrimSeconds(v)),
         ];
       case BatchOp.trimRange:
         return [
-          _labeledSlider(context, AppLocalizations.t('batch.fromSec'), state.trimStart, 0, 3600, (v) => notifier.setTrimStart(v)),
+          _PrecisionSlider(label: AppLocalizations.t('batch.fromSec'), value: state.trimStart, min: 0, max: 3600, onChanged: (v) => notifier.setTrimStart(v)),
           const SizedBox(height: 8),
-          _labeledSlider(context, AppLocalizations.t('batch.toSec'), state.trimEnd, 0, 3600, (v) => notifier.setTrimEnd(v)),
+          _PrecisionSlider(label: AppLocalizations.t('batch.toSec'), value: state.trimEnd, min: 0, max: 3600, onChanged: (v) => notifier.setTrimEnd(v)),
         ];
       case BatchOp.containerSwap:
       case BatchOp.audioExtract:
       case BatchOp.audioNormalize:
         return [];
     }
-  }
-
-  Widget _labeledSlider(BuildContext context, String label, double value, double min, double max, ValueChanged<double> onChanged) {
-    final controller = TextEditingController(text: value.toStringAsFixed(3));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 3,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                ),
-                child: Slider(
-                  value: value.clamp(min, max),
-                  min: min,
-                  max: max,
-                  activeColor: AppColors.textSecondary,
-                  onChanged: (v) {
-                    onChanged(v);
-                    controller.text = v.toStringAsFixed(3);
-                  },
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 70,
-              child: TextField(
-                controller: controller,
-                style: TextStyle(fontSize: 11, color: AppColors.textPrimary),
-                decoration: InputDecoration(
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.border)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.border)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.textSecondary)),
-                ),
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                onSubmitted: (t) {
-                  final v = double.tryParse(t);
-                  if (v != null && v >= min && v <= max) {
-                    onChanged(v);
-                  } else {
-                    controller.text = value.toStringAsFixed(3);
-                  }
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
   }
 
   Widget _buildOutputDir(BatchState state, BatchNotifier notifier) {
@@ -449,5 +392,105 @@ class BatchScreen extends ConsumerWidget {
     }
 
     notifier.setOverallStatus(BatchStatus.completed);
+  }
+}
+
+class _PrecisionSlider extends StatefulWidget {
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+
+  const _PrecisionSlider({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  State<_PrecisionSlider> createState() => _PrecisionSliderState();
+}
+
+class _PrecisionSliderState extends State<_PrecisionSlider> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value.toStringAsFixed(3));
+  }
+
+  @override
+  void didUpdateWidget(_PrecisionSlider old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value && _controller.text != widget.value.toStringAsFixed(3)) {
+      _controller.text = widget.value.toStringAsFixed(3);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(widget.label,
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                ),
+                child: Slider(
+                  value: widget.value.clamp(widget.min, widget.max),
+                  min: widget.min,
+                  max: widget.max,
+                  activeColor: AppColors.textSecondary,
+                  onChanged: (v) {
+                    widget.onChanged(v);
+                    _controller.text = v.toStringAsFixed(3);
+                  },
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 70,
+              child: TextField(
+                controller: _controller,
+                style: TextStyle(fontSize: 11, color: AppColors.textPrimary),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.border)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.border)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: AppColors.textSecondary)),
+                ),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                onSubmitted: (t) {
+                  final v = double.tryParse(t);
+                  if (v != null && v >= widget.min && v <= widget.max) {
+                    widget.onChanged(v);
+                  } else {
+                    _controller.text = widget.value.toStringAsFixed(3);
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }

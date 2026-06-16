@@ -704,6 +704,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AudioState>(audioProvider, (prev, next) {
+      if (prev == null) return;
+      if (_audioTracks != next.tracks || _muteAudio != next.muted || _mixTracks != next.mixEnabled) {
+        setState(() {
+          _audioTracks = next.tracks;
+          _muteAudio = next.muted;
+          _mixTracks = next.mixEnabled;
+        });
+      }
+    });
+    ref.listen<ClipsState>(clipsProvider, (prev, next) {
+      if (prev == null) return;
+      if (_clips != (next.clips.isNotEmpty ? next.clips : [])) {
+        setState(() => _clips = next.clips.isNotEmpty ? next.clips : []);
+      }
+    });
+
     final fileName = _videoPath?.split('\\').last.split('/').last;
     final total = _getTotalDuration();
 
