@@ -103,7 +103,7 @@ class _TimelineBarState extends State<TimelineBar> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 40,
+      height: 56,
       color: AppColors.timelineBg,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Opacity(
@@ -185,46 +185,75 @@ class _TimelineBarState extends State<TimelineBar> {
       link: _layerLink,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          return GestureDetector(
-            onTapDown: (details) {
-              final ratio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
-              if (widget.showScrubThumbnails) {
-                _showThumbnail(ratio);
-              }
-              widget.onSeekTap(ratio * widget.totalDuration);
-              _selectClipAtRatio(ratio);
-            },
-            onHorizontalDragStart: (details) {
-              final ratio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
-              if (widget.showScrubThumbnails) {
-                _showThumbnail(ratio);
-              }
-            },
-            onHorizontalDragUpdate: (details) {
-              final ratio = ((details.localPosition.dx) / constraints.maxWidth).clamp(0.0, 1.0);
-              if (widget.showScrubThumbnails) {
-                _showThumbnail(ratio);
-              }
-              widget.onSeekDrag(ratio * widget.totalDuration);
-            },
-            onHorizontalDragEnd: (_) {
-              _removeOverlay();
-            },
-            child: Container(
-              height: 32,
-              alignment: Alignment.center,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
+          final showTicks = widget.enabled && widget.totalDuration > 0;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Scrub bar
+              GestureDetector(
+                onTapDown: (details) {
+                  final ratio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
+                  widget.onSeekTap(ratio * widget.totalDuration);
+                  _selectClipAtRatio(ratio);
+                },
+                onHorizontalDragStart: (details) {
+                  final ratio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
+                  if (widget.showScrubThumbnails) {
+                    _showThumbnail(ratio);
+                  }
+                },
+                onHorizontalDragUpdate: (details) {
+                  final ratio = ((details.localPosition.dx) / constraints.maxWidth).clamp(0.0, 1.0);
+                  if (widget.showScrubThumbnails) {
+                    _showThumbnail(ratio);
+                  }
+                  widget.onSeekDrag(ratio * widget.totalDuration);
+                },
+                onHorizontalDragEnd: (_) {
+                  _removeOverlay();
+                },
+                child: Container(
+                  height: 32,
+                  alignment: Alignment.center,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: CustomPaint(
+                        size: Size(constraints.maxWidth, 12),
+                        painter: _ScrubBarPainter(
+                          cursorPosition: widget.cursorPosition,
+                          clips: widget.clips,
+                          totalDuration: widget.totalDuration,
+                        ),
+                      ),
+                    ),
+                ),
+              ),
+              // Tick marks (between bar and labels)
+              if (showTicks)
+                SizedBox(
+                  height: 8,
                   child: CustomPaint(
                     size: Size(constraints.maxWidth, 8),
-                    painter: _ScrubBarPainter(
-                      cursorPosition: widget.cursorPosition,
-                      clips: widget.clips,
-                      totalDuration: widget.totalDuration,
+                    painter: _TicksPainter(tickCount: 10),
+                  ),
+                ),
+              // Time labels (drawn via TextPainter — full control, no clipping)
+              if (showTicks)
+                SizedBox(
+                  height: 14,
+                  child: CustomPaint(
+                    size: Size(constraints.maxWidth, 14),
+                    painter: _TimeLabelsPainter(
+                      labels: List.generate(
+                        11,
+                        (i) => _formatTime(
+                          (widget.totalDuration / 10) * i,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-            ),
+            ],
           );
         },
       ),
@@ -321,4 +350,56 @@ class _ScrubBarPainter extends CustomPainter {
       oldDelegate.cursorPosition != cursorPosition ||
       oldDelegate.clips != clips ||
       oldDelegate.totalDuration != totalDuration;
+}
+
+class _TicksPainter extends CustomPainter {
+  final int tickCount;
+
+  _TicksPainter({this.tickCount = 10});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.textDim.withValues(alpha: 0.5)
+      ..strokeWidth = 1;
+    for (int i = 1; i < tickCount; i++) {
+      final x = (i / tickCount) * size.width;
+      canvas.drawLine(Offset(x, 2), Offset(x, size.height - 2), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TicksPainter oldDelegate) =>
+      oldDelegate.tickCount != tickCount;
+}
+
+class _TimeLabelsPainter extends CustomPainter {
+  final List<String> labels;
+
+  _TimeLabelsPainter({required this.labels});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (int i = 0; i < labels.length; i++) {
+      final x = (i / (labels.length - 1)) * size.width;
+      final textSpan = TextSpan(
+        text: labels[i],
+        style: TextStyle(
+          fontSize: 9,
+          fontFamily: 'monospace',
+          color: AppColors.textDim,
+        ),
+      );
+      final tp = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      )..layout();
+      // Center each label on its tick position
+      tp.paint(canvas, Offset(x - tp.width / 2, (size.height - tp.height) / 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TimeLabelsPainter oldDelegate) =>
+      oldDelegate.labels != labels;
 }
