@@ -4,7 +4,7 @@ import '../core/theme/app_colors.dart';
 enum AppThemeMode { light, dark, twilight }
 
 class ThemeModeNotifier extends StateNotifier<AppThemeMode> {
-  ThemeModeNotifier() : super(AppThemeMode.dark) {
+  ThemeModeNotifier([AppThemeMode initial = AppThemeMode.dark]) : super(initial) {
     _apply(state);
   }
 

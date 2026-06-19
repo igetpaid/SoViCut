@@ -28,6 +28,10 @@ import 'providers/audio_provider.dart';
 import 'providers/video_provider.dart';
 import 'providers/clips_provider.dart';
 import 'providers/export_provider.dart';
+import 'providers/export_providers.dart';
+import 'providers/locale_provider.dart';
+import 'providers/theme_provider.dart';
+import 'services/settings_service.dart';
 import 'ui/settings/settings_panel.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -431,6 +435,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Future<void> _exportQuality() async {
     if (_videoPath == null) return;
     await _exportWithStrategy(FilterGraphStrategy(useFastPreset: false));
+  }
+
+  void _saveAllSettings() {
+    final locale = ref.read(localeProvider);
+    final themeMode = ref.read(themeModeProvider);
+    final fastExport = ref.read(fastExportProvider);
+    final saveExportMode = ref.read(saveExportModeProvider);
+    SettingsService.save(AppSettings(
+      language: locale.languageCode,
+      themeMode: themeMode.name,
+      fastExport: fastExport,
+      saveExportMode: saveExportMode,
+    ));
   }
 
   Future<void> _pickVideo() async {
@@ -927,7 +944,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 borderRadius: const BorderRadius.horizontal(
                   left: Radius.circular(8),
                 ),
-                onTap: _exportFast,
+                onTap: () {
+                  final fast = ref.read(fastExportProvider);
+                  if (fast) {
+                    _exportFast();
+                  } else {
+                    _exportQuality();
+                  }
+                },
                 child: const SizedBox(
                   height: 34,
                   child: Padding(
@@ -962,8 +986,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               height: 34,
               child: PopupMenuButton<String>(
                 onSelected: (value) {
-                  if (value == 'fast') _exportFast();
-                  if (value == 'quality') _exportQuality();
+                  if (value == 'fast') {
+                    ref.read(fastExportProvider.notifier).state = true;
+                    _exportFast();
+                  } else {
+                    ref.read(fastExportProvider.notifier).state = false;
+                    _exportQuality();
+                  }
+                  if (ref.read(saveExportModeProvider)) {
+                    _saveAllSettings();
+                  }
                 },
                 itemBuilder: (context) => [
                   PopupMenuItem<String>(
