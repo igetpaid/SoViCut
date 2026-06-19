@@ -17,6 +17,7 @@ class TimelineBar extends StatefulWidget {
   final ValueChanged<int>? onSelectClip;
   final List<ThumbnailEntry> thumbnails;
   final bool showScrubThumbnails;
+  final bool enabled;
 
   const TimelineBar({
     super.key,
@@ -32,6 +33,7 @@ class TimelineBar extends StatefulWidget {
     this.onSelectClip,
     this.thumbnails = const [],
     this.showScrubThumbnails = true,
+    this.enabled = true,
   });
 
   @override
@@ -104,16 +106,22 @@ class _TimelineBarState extends State<TimelineBar> {
       height: 40,
       color: AppColors.timelineBg,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        children: [
-          _buildPlayButton(),
-          const SizedBox(width: 6),
-          _buildTimeDisplay(),
-          const SizedBox(width: 6),
-          Expanded(child: _buildScrubBar()),
-          const SizedBox(width: 6),
-          _buildTotalTime(),
-        ],
+      child: Opacity(
+        opacity: widget.enabled ? 1.0 : 0.35,
+        child: AbsorbPointer(
+          absorbing: !widget.enabled,
+          child: Row(
+            children: [
+              _buildPlayButton(),
+              const SizedBox(width: 6),
+              _buildTimeDisplay(),
+              const SizedBox(width: 6),
+              Expanded(child: _buildScrubBar()),
+              const SizedBox(width: 6),
+              _buildTotalTime(),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -146,7 +154,7 @@ class _TimelineBarState extends State<TimelineBar> {
     return SizedBox(
       width: 50,
       child: Text(
-        _formatTime(time),
+        widget.enabled ? _formatTime(time) : '--:--',
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w500,
@@ -161,7 +169,7 @@ class _TimelineBarState extends State<TimelineBar> {
     return SizedBox(
       width: 50,
       child: Text(
-        _formatTime(widget.totalDuration),
+        widget.enabled ? _formatTime(widget.totalDuration) : '--:--',
         style: TextStyle(
           fontSize: 12,
           color: AppColors.textDim,
@@ -259,13 +267,14 @@ class _ScrubBarPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (totalDuration <= 0) return;
-
+    // Always draw background bar
     final bgPaint = Paint()..color = AppColors.border;
     canvas.drawRRect(
       RRect.fromRectAndRadius(Rect.fromLTWH(0, 0, size.width, size.height), const Radius.circular(3)),
       bgPaint,
     );
+
+    if (totalDuration <= 0) return;
 
     double totalAccumulated = 0;
     for (int i = 0; i < clips.length; i++) {

@@ -876,6 +876,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         setState(() => _selectedClipIndex = index),
                     thumbnails: _thumbnailEntries,
                     showScrubThumbnails: ref.watch(showScrubThumbnailsProvider),
+                    enabled: _videoPath != null,
                   ), // TimelineBar
                 ), // MainLayout
               ), // Expanded
@@ -947,6 +948,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           Container(width: 1, height: 24, color: AppColors.border),
           const SizedBox(width: 12),
 
+          // --- Step nav buttons ---
+          _toolbarNavButton(Icons.chevron_left, () => _onSeekStep(false)),
+          const SizedBox(width: 6),
+          _toolbarNavButton(Icons.chevron_right, () => _onSeekStep(true)),
+          const SizedBox(width: 12),
+          Container(width: 1, height: 24, color: AppColors.border),
+          const SizedBox(width: 12),
+
           // --- Action buttons (always visible, disabled when no clips) ---
             _toolAction(
               icon: Icons.content_cut,
@@ -968,14 +977,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               onTap: clip != null && !clip.isVisible ? () => _restoreClip(selIdx!) : null,
               color: const Color(0xFF4CAF50),
             ),
-            const SizedBox(width: 12),
-            Container(width: 1, height: 24, color: AppColors.border),
-            const SizedBox(width: 12),
-
-          // --- Step nav buttons ---
-          _toolbarNavButton(Icons.chevron_left, () => _onSeekStep(false)),
-          _toolbarNavButton(Icons.chevron_right, () => _onSeekStep(true)),
-          const Spacer(),
+            const Spacer(),
           if (!_isExporting) _buildExportButton(),
         ],
       ),
