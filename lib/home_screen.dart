@@ -904,13 +904,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           const SizedBox(width: 6),
           ...List.generate(_stepSizes.length, (i) {
             final isSelected = _seekStepSize == _stepSizes[i];
+            final val = _stepSizes[i];
             String label;
-            if (_stepSizes[i] >= 1) {
-              label = '${_stepSizes[i].toInt()}s';
-            } else if (_stepSizes[i] == 0.1) {
-              label = '0.1s';
+            // 1/30 ≈ 0.033 — один кадр
+            if ((val - 1/30).abs() < 0.001) {
+              label = AppLocalizations.t('step.frame');
+            } else if (val < 1) {
+              // 0.1, 0.5
+              label = '${val.toStringAsFixed(1)}s';
             } else {
-              label = '1f';
+              label = '${val.toInt()}s';
             }
             return GestureDetector(
               onTap: () => setState(() => _seekStepSize = _stepSizes[i]),
@@ -944,12 +947,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           Container(width: 1, height: 24, color: AppColors.border),
           const SizedBox(width: 12),
 
-          // --- Action buttons (only when clips exist) ---
-          if (_clips.isNotEmpty) ...[
+          // --- Action buttons (always visible, disabled when no clips) ---
             _toolAction(
               icon: Icons.content_cut,
               label: 'Split',
-              onTap: _splitCurrentClip,
+              onTap: _clips.isNotEmpty ? _splitCurrentClip : null,
               color: AppColors.accent,
             ),
             const SizedBox(width: 6),
@@ -969,11 +971,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             const SizedBox(width: 12),
             Container(width: 1, height: 24, color: AppColors.border),
             const SizedBox(width: 12),
-          ],
 
           // --- Step nav buttons ---
-          _toolbarButton(Icons.skip_previous, () => _onSeekStep(false)),
-          _toolbarButton(Icons.skip_next, () => _onSeekStep(true)),
+          _toolbarNavButton(Icons.chevron_left, () => _onSeekStep(false)),
+          _toolbarNavButton(Icons.chevron_right, () => _onSeekStep(true)),
           const Spacer(),
           if (!_isExporting) _buildExportButton(),
         ],
@@ -1181,6 +1182,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _toolbarNavButton(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.textDim.withValues(alpha: 0.3), width: 1.5),
+          ),
+          child: Icon(icon, size: 18, color: AppColors.textDim),
         ),
       ),
     );

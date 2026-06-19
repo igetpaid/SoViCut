@@ -217,6 +217,10 @@
     "sec": "сек"
   },
 
+  "step": {
+    "frame": "1 кадр"
+  },
+
   "mediaInfo": {
     "variableBitrate": "переменный"
   },

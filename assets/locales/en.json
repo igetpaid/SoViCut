@@ -217,6 +217,10 @@
     "sec": "sec"
   },
 
+  "step": {
+    "frame": "1 frame"
+  },
+
   "mediaInfo": {
     "variableBitrate": "variable"
   },
