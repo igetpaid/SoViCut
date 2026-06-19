@@ -79,6 +79,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   String _exportStage = '';
   bool _exportCancelled = false;
 
+  // Seeking spinner
+  bool _isSeeking = false;
+  int _seekCounter = 0;
+
   @override
   void initState() {
     super.initState();
@@ -178,16 +182,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return total;
   }
 
-  void _onTimelineCursorMoved(double timeInSeconds) {
+  void _onTimelineCursorMoved(double timeInSeconds, {bool fromDrag = false}) {
     final totalDur = _getTotalDuration();
     if (totalDur <= 0) return;
+
+    _seekCounter++;
+    final mySeek = _seekCounter;
 
     setState(() {
       _previewPosition = timeInSeconds / totalDur;
     });
 
     if (_videoController != null) {
-      _videoController!.seekTo(_fullTimeToVideoTime(timeInSeconds));
+      final seekFuture =
+          _videoController!.seekTo(_fullTimeToVideoTime(timeInSeconds));
+
+      if (fromDrag) {
+        // Drag: show spinner immediately, keep at least 300ms
+        setState(() => _isSeeking = true);
+        final minDelay = Future.delayed(const Duration(milliseconds: 300));
+        Future.wait([seekFuture, minDelay]).whenComplete(() {
+          if (mounted && _seekCounter == mySeek) {
+            setState(() => _isSeeking = false);
+          }
+        });
+      } else {
+        // Click: wait 100ms before showing spinner;
+        // if seek completes within 100ms, no spinner is shown.
+        bool seekCompleted = false;
+        final showDelay = Future.delayed(const Duration(milliseconds: 100));
+        showDelay.then((_) {
+          if (mounted && _seekCounter == mySeek && !seekCompleted) {
+            setState(() => _isSeeking = true);
+          }
+        });
+        seekFuture.whenComplete(() {
+          seekCompleted = true;
+          if (mounted && _seekCounter == mySeek) {
+            setState(() => _isSeeking = false);
+          }
+        });
+      }
     }
   }
 
@@ -442,11 +477,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final themeMode = ref.read(themeModeProvider);
     final fastExport = ref.read(fastExportProvider);
     final saveExportMode = ref.read(saveExportModeProvider);
+    final showScrub = ref.read(showScrubThumbnailsProvider);
     SettingsService.save(AppSettings(
       language: locale.languageCode,
       themeMode: themeMode.name,
       fastExport: fastExport,
       saveExportMode: saveExportMode,
+      showScrubThumbnails: showScrub,
     ));
   }
 
@@ -762,10 +799,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         _loadVideo(detail.files.first.path);
                       }
                     },
-                    child: CustomPlayer(
-                      controller: _videoController,
-                      hasAudioChanges: !_muteAudio,
-                      onTapEmpty: _pickVideo,
+                    child: Stack(
+                      children: [
+                        CustomPlayer(
+                          controller: _videoController,
+                          hasAudioChanges: !_muteAudio,
+                          onTapEmpty: _pickVideo,
+                        ),
+                        if (_isSeeking)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppColors.accent,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   rightPanel: ToolPanel(
@@ -814,10 +870,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     currentTime: _previewPosition * total,
                     isPlaying: _isPlaying,
                     onPlayPause: _togglePlayPause,
-                    onSeek: _onTimelineCursorMoved,
+                    onSeekTap: (t) => _onTimelineCursorMoved(t, fromDrag: false),
+                    onSeekDrag: (t) => _onTimelineCursorMoved(t, fromDrag: true),
                     onSelectClip: (index) =>
                         setState(() => _selectedClipIndex = index),
                     thumbnails: _thumbnailEntries,
+                    showScrubThumbnails: ref.watch(showScrubThumbnailsProvider),
                   ), // TimelineBar
                 ), // MainLayout
               ), // Expanded

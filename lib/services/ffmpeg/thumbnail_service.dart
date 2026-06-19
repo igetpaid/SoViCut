@@ -9,39 +9,44 @@ class ThumbnailEntry {
 }
 
 class ThumbnailService {
+  /// Generates thumbnails at 1 fps in a single FFmpeg pass.
+  /// Returns list of [ThumbnailEntry] sorted by time.
   static Future<List<ThumbnailEntry>> generateThumbnails({
     required String videoPath,
     required String outputDir,
-    required double duration,
+    double? duration,
   }) async {
-    final entries = <ThumbnailEntry>[];
     final dir = Directory(outputDir);
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
 
-    final interval = AppConstants.scrubThumbnailInterval;
-    final count = (duration / interval).ceil();
+    // Single FFmpeg process: decode video once, output 1 frame/second
+    // -threads 2: leave CPU for Flutter UI
+    await Process.run(
+      'ffmpeg',
+      [
+        '-i', videoPath,
+        '-vf', 'fps=1,scale=${AppConstants.scrubThumbnailWidth}:${AppConstants.scrubThumbnailHeight}',
+        '-q:v', '10',
+        '-vsync', '0',
+        '-threads', '2',
+        '-y',
+        '$outputDir\\thumb_%05d.jpg',
+      ],
+      runInShell: true,
+    );
 
-    for (int i = 0; i < count && i < 3600; i++) {
-      final time = i * interval;
-      final outFile = '$outputDir\\thumb_${i.toString().padLeft(5, '0')}.jpg';
+    // Collect generated files, sorted by name (= by time)
+    final files = await dir.list().toList();
+    files.sort((a, b) => a.path.compareTo(b.path));
 
-      final result = await Process.run(
-        'ffmpeg',
-        [
-          '-ss', time.toStringAsFixed(2),
-          '-i', videoPath,
-          '-vframes', '1',
-          '-s', '${AppConstants.scrubThumbnailWidth}x${AppConstants.scrubThumbnailHeight}',
-          '-q:v', '10',
-          '-y', outFile,
-        ],
-        runInShell: true,
-      );
-      if (result.exitCode == 0) {
-        entries.add(ThumbnailEntry(timeInSeconds: time, path: outFile));
-      }
+    final entries = <ThumbnailEntry>[];
+    for (int i = 0; i < files.length; i++) {
+      entries.add(ThumbnailEntry(
+        timeInSeconds: i.toDouble(),
+        path: files[i].path,
+      ));
     }
     return entries;
   }

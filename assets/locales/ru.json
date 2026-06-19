@@ -200,7 +200,9 @@
     "themeDarkDesc": "Классическая тёмная тема",
     "themeTwilight": "Сумерки",
     "themeTwilightDesc": "Сине-фиолетовая тема для комфортной работы",
-    "language": "Язык"
+    "language": "Язык",
+    "scrubThumbnails": "Превью на таймлайне",
+    "scrubThumbnailsDesc": "Показывать миниатюры при наведении на шкалу времени"
   },
 
   "common": {

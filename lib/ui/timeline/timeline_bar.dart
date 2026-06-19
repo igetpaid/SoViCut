@@ -12,9 +12,11 @@ class TimelineBar extends StatefulWidget {
   final double? currentTime;
   final bool isPlaying;
   final VoidCallback? onPlayPause;
-  final ValueChanged<double> onSeek;
+  final ValueChanged<double> onSeekTap;
+  final ValueChanged<double> onSeekDrag;
   final ValueChanged<int>? onSelectClip;
   final List<ThumbnailEntry> thumbnails;
+  final bool showScrubThumbnails;
 
   const TimelineBar({
     super.key,
@@ -25,9 +27,11 @@ class TimelineBar extends StatefulWidget {
     this.currentTime,
     this.isPlaying = false,
     this.onPlayPause,
-    required this.onSeek,
+    required this.onSeekTap,
+    required this.onSeekDrag,
     this.onSelectClip,
     this.thumbnails = const [],
+    this.showScrubThumbnails = true,
   });
 
   @override
@@ -176,18 +180,24 @@ class _TimelineBarState extends State<TimelineBar> {
           return GestureDetector(
             onTapDown: (details) {
               final ratio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
-              _showThumbnail(ratio);
-              widget.onSeek(ratio * widget.totalDuration);
+              if (widget.showScrubThumbnails) {
+                _showThumbnail(ratio);
+              }
+              widget.onSeekTap(ratio * widget.totalDuration);
               _selectClipAtRatio(ratio);
             },
             onHorizontalDragStart: (details) {
               final ratio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
-              _showThumbnail(ratio);
+              if (widget.showScrubThumbnails) {
+                _showThumbnail(ratio);
+              }
             },
             onHorizontalDragUpdate: (details) {
               final ratio = ((details.localPosition.dx) / constraints.maxWidth).clamp(0.0, 1.0);
-              _showThumbnail(ratio);
-              widget.onSeek(ratio * widget.totalDuration);
+              if (widget.showScrubThumbnails) {
+                _showThumbnail(ratio);
+              }
+              widget.onSeekDrag(ratio * widget.totalDuration);
             },
             onHorizontalDragEnd: (_) {
               _removeOverlay();

@@ -156,6 +156,9 @@ class SettingsPanel extends ConsumerWidget {
             // --- Save export mode toggle ---
             _SaveExportToggle(),
             const SizedBox(height: 4),
+            // --- Scrub thumbnails toggle ---
+            const SizedBox(height: 4),
+            _ScrubThumbnailsToggle(),
           ],
         ),
       ),
@@ -327,11 +330,13 @@ void _saveAll(WidgetRef ref) {
   final t = ref.read(themeModeProvider);
   final f = ref.read(fastExportProvider);
   final s = ref.read(saveExportModeProvider);
+  final scr = ref.read(showScrubThumbnailsProvider);
   SettingsService.save(AppSettings(
     language: l.languageCode,
     themeMode: t.name,
     fastExport: f,
     saveExportMode: s,
+    showScrubThumbnails: scr,
   ));
 }
 
@@ -434,6 +439,42 @@ class _SaveExportToggle extends ConsumerWidget {
         value: value,
         onChanged: (v) {
           ref.read(saveExportModeProvider.notifier).state = v;
+          _saveAll(ref);
+        },
+        activeThumbColor: AppColors.accent,
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+      ),
+    );
+  }
+}
+
+class _ScrubThumbnailsToggle extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(showScrubThumbnailsProvider);
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgCard.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: SwitchListTile(
+        title: Text(
+          AppLocalizations.t('settings.scrubThumbnails'),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          AppLocalizations.t('settings.scrubThumbnailsDesc'),
+          style: TextStyle(fontSize: 10, color: AppColors.textDim),
+        ),
+        value: value,
+        onChanged: (v) {
+          ref.read(showScrubThumbnailsProvider.notifier).state = v;
           _saveAll(ref);
         },
         activeThumbColor: AppColors.accent,

@@ -200,7 +200,9 @@
     "themeDarkDesc": "Classic dark theme",
     "themeTwilight": "Twilight",
     "themeTwilightDesc": "Blue-purple theme for comfortable work",
-    "language": "Language"
+    "language": "Language",
+    "scrubThumbnails": "Scrub thumbnails",
+    "scrubThumbnailsDesc": "Show preview thumbnails when hovering timeline"
   },
 
   "common": {

@@ -38,6 +38,9 @@ void main() async {
         saveExportModeProvider.overrideWith(
           (ref) => settings.saveExportMode,
         ),
+        showScrubThumbnailsProvider.overrideWith(
+          (ref) => settings.showScrubThumbnails,
+        ),
       ],
       child: const SoViCutApp(),
     ),

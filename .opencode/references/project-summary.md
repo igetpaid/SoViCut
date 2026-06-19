@@ -23,6 +23,9 @@ HomeScreen (ConsumerStatefulWidget)
 Audio, Clips, Trim, Export tabs rendered as right panel content switched by `_appMode`.
 
 ## Key Decisions
+- **Settings persistence**: `%APPDATA%/SoViCut/settings.json` saves language, theme, export mode. `saveExportMode` flag controls whether export choice is restored on restart.
+- **Export mode provider**: `fastExportProvider` (StateProvider<bool>) + `saveExportModeProvider` (StateProvider<bool>). Initialized from settings in main.dart overrides.
+- **Settings dialog**: scrollable (`SingleChildScrollView` + `maxHeight: 85%`). Contains theme, language, export mode toggle, and "Save export settings" switch.
 - **Right panel width resizable**: 250-500px, global-position tracking with start-width capture for 1:1 drag response.
 - **Export button**: split button (bolt icon + dropdown arrow) in bottom toolbar, right-aligned with Step controls. Two options: Fast Export / Standard Export.
 - **Tab order**: Audio → Clips → Trim → Export (by frequency of use).

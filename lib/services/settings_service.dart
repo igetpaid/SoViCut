@@ -6,12 +6,14 @@ class AppSettings {
   final String themeMode; // 'dark', 'light', 'twilight'
   final bool fastExport;
   final bool saveExportMode;
+  final bool showScrubThumbnails;
 
   const AppSettings({
     this.language = 'ru',
     this.themeMode = 'dark',
     this.fastExport = true,
     this.saveExportMode = true,
+    this.showScrubThumbnails = true,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -19,6 +21,7 @@ class AppSettings {
         themeMode: json['themeMode'] as String? ?? 'dark',
         fastExport: json['fastExport'] as bool? ?? true,
         saveExportMode: json['saveExportMode'] as bool? ?? true,
+        showScrubThumbnails: json['showScrubThumbnails'] as bool? ?? true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -26,6 +29,7 @@ class AppSettings {
         'themeMode': themeMode,
         'fastExport': fastExport,
         'saveExportMode': saveExportMode,
+        'showScrubThumbnails': showScrubThumbnails,
       };
 
   /// Returns export mode with saveExportMode respected:
