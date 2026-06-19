@@ -43,6 +43,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   List<AudioTrack> _audioTracks = [];
   List<Clip> _clips = [];
 
+  double _rightPanelWidth = 300;
+
   bool _trimEnabled = false;
   double _trimSeconds = 10;
   int _trimMode = 0;
@@ -735,6 +737,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       onOpenProject: _openProject,
                       onOpenSettings: _openSettings,
                     ),
+                  rightPanelWidth: _rightPanelWidth,
+                  onSplitChanged: (w) => setState(() => _rightPanelWidth = w),
                   preview: DropTarget(
                     onDragDone: (detail) {
                       if (detail.files.isNotEmpty) {
