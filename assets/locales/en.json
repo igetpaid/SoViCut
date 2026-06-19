@@ -11,8 +11,10 @@
     "settings": "Settings",
     "about": "About",
     "closeVideo": "Close video",
-    "exportFast": "Fast",
-    "exportQuality": "Quality"
+    "exportFast": "Fast Export",
+    "exportFastDesc": "larger file",
+    "exportQuality": "Standard Export",
+    "exportQualityDesc": "standard size"
   },
 
   "player": {

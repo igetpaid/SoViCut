@@ -42,7 +42,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   String? _videoPath;
   List<AudioTrack> _audioTracks = [];
   List<Clip> _clips = [];
-  bool _isLoading = false;
 
   bool _trimEnabled = false;
   double _trimSeconds = 10;
@@ -447,7 +446,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
     setState(() {
       _videoPath = path;
-      _isLoading = true;
     });
 
     try {
@@ -483,14 +481,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           originalChannels: audioInfo.channels,
         );
         _previewPosition = 0;
-        _isLoading = false;
         _thumbnailEntries = [];
       });
     } catch (e, stackTrace) {
       print('${AppLocalizations.t('player.error')}: $e');
       print(stackTrace);
       setState(() {
-        _isLoading = false;
         _videoPath = null;
       });
       if (mounted) {
@@ -729,14 +725,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         : Column(
             children: [
               Expanded(
-                child: MainLayout(
+                  child: MainLayout(
                     toolbar: Toolbar(
                       currentMode: _appMode,
                       onModeChanged: (mode) => setState(() => _appMode = mode),
                       currentFileName: fileName,
-                      onFastExport: _exportFast,
-                      onQualityExport: _exportQuality,
-                      isExporting: _isLoading,
                       onCloseVideo: _videoPath != null ? _onCloseVideo : null,
                       onSaveProject: _videoPath != null ? _saveProject : null,
                       onOpenProject: _openProject,
@@ -902,7 +895,156 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           // --- Step nav buttons ---
           _toolbarButton(Icons.skip_previous, () => _onSeekStep(false)),
           _toolbarButton(Icons.skip_next, () => _onSeekStep(true)),
+          const Spacer(),
+          if (!_isExporting) _buildExportButton(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildExportButton() {
+    if (_isExporting) {
+      return const SizedBox.shrink();
+    }
+    return Material(
+      type: MaterialType.transparency,
+      child: SizedBox(
+        height: 34,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Main button
+            Material(
+              color: AppColors.accent,
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(8),
+              ),
+              child: InkWell(
+                borderRadius: const BorderRadius.horizontal(
+                  left: Radius.circular(8),
+                ),
+                onTap: _exportFast,
+                child: const SizedBox(
+                  height: 34,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.bolt, size: 16, color: Colors.black87),
+                        SizedBox(width: 4),
+                        Text(
+                          'Export',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Divider
+            Container(
+              width: 1,
+              height: 34,
+              color: Colors.black87.withValues(alpha: 0.3),
+            ),
+            // Dropdown arrow
+            SizedBox(
+              height: 34,
+              child: PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'fast') _exportFast();
+                  if (value == 'quality') _exportQuality();
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<String>(
+                    value: 'fast',
+                    child: _exportMenuItem(
+                      Icons.bolt,
+                      AppLocalizations.t('menu.exportFast'),
+                      AppLocalizations.t('menu.exportFastDesc'),
+                    ),
+                  ),
+                  const PopupMenuDivider(height: 1),
+                  PopupMenuItem<String>(
+                    value: 'quality',
+                    child: _exportMenuItem(
+                      Icons.shield_outlined,
+                      AppLocalizations.t('menu.exportQuality'),
+                      AppLocalizations.t('menu.exportQualityDesc'),
+                    ),
+                  ),
+                ],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                offset: const Offset(-160, 6),
+                child: Material(
+                  color: AppColors.accent,
+                  borderRadius: const BorderRadius.horizontal(
+                    right: Radius.circular(8),
+                  ),
+                  child: InkWell(
+                    borderRadius: const BorderRadius.horizontal(
+                      right: Radius.circular(8),
+                    ),
+                    child: const SizedBox(
+                      width: 28,
+                      height: 34,
+                      child: Center(
+                        child: Icon(
+                          Icons.arrow_drop_down,
+                          size: 22,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _exportMenuItem(IconData icon, String title, String subtitle) {
+    return Material(
+      color: Colors.transparent,
+      child: SizedBox(
+        width: 200,
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: AppColors.accent),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textDim,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

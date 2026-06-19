@@ -8,9 +8,6 @@ class Toolbar extends StatelessWidget {
   final AppMode currentMode;
   final ValueChanged<AppMode> onModeChanged;
   final String? currentFileName;
-  final VoidCallback onFastExport;
-  final VoidCallback onQualityExport;
-  final bool isExporting;
   final VoidCallback? onCloseVideo;
   final VoidCallback? onSaveProject;
   final VoidCallback? onOpenProject;
@@ -21,9 +18,6 @@ class Toolbar extends StatelessWidget {
     required this.currentMode,
     required this.onModeChanged,
     this.currentFileName,
-    required this.onFastExport,
-    required this.onQualityExport,
-    required this.isExporting,
     this.onCloseVideo,
     this.onSaveProject,
     this.onOpenProject,
@@ -56,8 +50,6 @@ class Toolbar extends StatelessWidget {
           ],
           const Spacer(),
           _iconButton(Icons.settings, AppLocalizations.t('menu.settings'), onOpenSettings),
-          const SizedBox(width: 8),
-          _buildExportButton(),
         ],
       ),
     );
@@ -180,64 +172,4 @@ class Toolbar extends StatelessWidget {
     );
   }
 
-  Widget _buildExportButton() {
-    if (isExporting) {
-      return SizedBox(
-        height: 36,
-        child: ElevatedButton.icon(
-          onPressed: null,
-          icon: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.bgDark)),
-          label: Text(AppLocalizations.t('export.encoding')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: AppColors.bgDark,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          ),
-        ),
-      );
-    }
-    return SizedBox(
-      height: 36,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _segment(AppLocalizations.t('menu.exportFast'), Icons.bolt, onFastExport, true),
-          Container(width: 1, height: 26, color: AppColors.bgDark.withValues(alpha: 0.3)),
-          _segment(AppLocalizations.t('menu.exportQuality'), Icons.shield_outlined, onQualityExport, false),
-        ],
-      ),
-    );
-  }
-
-  Widget _segment(String label, IconData icon, VoidCallback onTap, bool isLeft) {
-    return Material(
-      color: AppColors.accent,
-      borderRadius: isLeft
-          ? const BorderRadius.horizontal(left: Radius.circular(6))
-          : const BorderRadius.horizontal(right: Radius.circular(6)),
-      child: InkWell(
-        borderRadius: isLeft
-            ? const BorderRadius.horizontal(left: Radius.circular(6))
-            : const BorderRadius.horizontal(right: Radius.circular(6)),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          height: 36,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 13, color: AppColors.bgDark),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.bgDark),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

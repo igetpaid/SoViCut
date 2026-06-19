@@ -77,9 +77,9 @@ class ToolPanel extends StatelessWidget {
               isScrollable: false,
               labelPadding: EdgeInsets.zero,
               tabs: [
-                Tab(text: AppLocalizations.t('tabs.trim')),
                 Tab(text: AppLocalizations.t('tabs.audio')),
                 Tab(text: AppLocalizations.t('tabs.clips')),
+                Tab(text: AppLocalizations.t('tabs.trim')),
                 Tab(text: AppLocalizations.t('tabs.export')),
               ],
               labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
@@ -94,13 +94,6 @@ class ToolPanel extends StatelessWidget {
             child: TabBarView(
               controller: tabController,
               children: [
-                TrimTab(
-                  isEnabled: trimEnabled,
-                  onEnabledChanged: onTrimEnabledChanged,
-                  onTrimChanged: onTrimChanged,
-                  initialSeconds: trimSeconds,
-                  initialMode: trimMode,
-                ),
                 AudioTab(
                   muted: audioMuted,
                   onMutedChanged: onAudioMutedChanged,
@@ -116,6 +109,13 @@ class ToolPanel extends StatelessWidget {
                   onRestore: onRestoreClip,
                   onSelect: onSelectClip,
                   selectedIndex: selectedClipIndex,
+                ),
+                TrimTab(
+                  isEnabled: trimEnabled,
+                  onEnabledChanged: onTrimEnabledChanged,
+                  onTrimChanged: onTrimChanged,
+                  initialSeconds: trimSeconds,
+                  initialMode: trimMode,
                 ),
                 ExportSettingsTab(
                   videoPath: videoPath,

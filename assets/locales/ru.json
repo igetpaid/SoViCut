@@ -11,8 +11,10 @@
     "settings": "Настройки",
     "about": "О программе",
     "closeVideo": "Закрыть видео",
-    "exportFast": "Быстрый",
-    "exportQuality": "Качественный"
+    "exportFast": "Быстрый экспорт",
+    "exportFastDesc": "больше размер",
+    "exportQuality": "Стандартный экспорт",
+    "exportQualityDesc": "стандартный размер"
   },
 
   "player": {
@@ -30,17 +32,17 @@
 
   "timeline": {
     "split": "Разделить в позиции курсора",
-    "delete": "Удалить фрагмент",
-    "restore": "Восстановить фрагмент",
-    "clipsCount": "Фрагментов: {count} ({visible} видимых)",
-    "selectClip": "Выберите фрагмент для операций",
-    "clipNumber": "Фрагмент {number}"
+    "delete": "Удалить отрезок",
+    "restore": "Восстановить отрезок",
+    "clipsCount": "Отрезков: {count} ({visible} видимых)",
+    "selectClip": "Выберите отрезок для операций",
+    "clipNumber": "Отрезок {number}"
   },
 
   "tabs": {
     "trim": "Обрезка",
     "audio": "Аудио",
-    "clips": "Фрагменты",
+    "clips": "Отрезки",
     "export": "Экспорт"
   },
 
@@ -174,7 +176,7 @@
   },
 
   "dialog": {
-    "shortClipsFound": "Обнаружены короткие фрагменты",
+    "shortClipsFound": "Обнаружены короткие отрезки",
     "chooseAction": "Выберите способ обработки:",
     "cancelExport": "Отмена экспорта",
     "roundToKeyframes": "Округление до ключевых кадров (быстро)",
@@ -182,8 +184,8 @@
   },
 
   "strategy": {
-    "shortClipsDetected": "Обнаружены очень короткие фрагменты (< {threshold} сек):",
-    "clipInfo": "Фрагмент {number}: {duration} сек",
+    "shortClipsDetected": "Обнаружены очень короткие отрезки (< {threshold} сек):",
+    "clipInfo": "Отрезок {number}: {duration} сек",
     "mayCauseArtifacts": "Это может привести к артефактам или потере звука.",
     "chooseAction": "Выберите способ обработки:",
     "fullTranscode": "Полное перекодирование (медленно, но качественно)"
